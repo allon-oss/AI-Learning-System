@@ -1,5 +1,6 @@
 const TOPIC_STORAGE_KEY = "personal-learning-system-topics";
 const RESOURCE_STORAGE_KEY = "personal-learning-system-resources";
+const PLAN_STORAGE_KEY = "personal-learning-system-plans";
 
 const defaultTopics = [
   {
@@ -42,6 +43,36 @@ const defaultTopics = [
     createdAt: "2026-08-10",
     updatedAt: "2026-08-10",
   },
+  {
+    id: "topic-ielts-listening",
+    name: "听力",
+    direction: "雅思英语学习",
+    parentId: "",
+    description: "练习雅思听力题型、关键词捕捉和错题复盘。",
+    status: "未开始",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "topic-ielts-writing",
+    name: "写作",
+    direction: "雅思英语学习",
+    parentId: "",
+    description: "练习雅思小作文、大作文结构和表达积累。",
+    status: "未开始",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "topic-ielts-speaking",
+    name: "口语",
+    direction: "雅思英语学习",
+    parentId: "",
+    description: "练习雅思口语话题、回答结构和表达流利度。",
+    status: "未开始",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
 ];
 
 const defaultResources = [
@@ -76,6 +107,7 @@ const defaultResources = [
 
 let topics = loadItems(TOPIC_STORAGE_KEY, defaultTopics);
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
+let plans = loadItems(PLAN_STORAGE_KEY, []);
 let selectedTopicId = topics[0]?.id || "";
 let selectedResourceId = resources[0]?.id || "";
 let editingResourceId = "";
@@ -101,6 +133,14 @@ const resourceTopicSelect = document.querySelector("#resourceTopic");
 const resourceFormTitle = document.querySelector("#resourceFormTitle");
 const resourceFormDescription = document.querySelector("#resourceFormDescription");
 const resourceSubmitButton = document.querySelector("#resourceSubmitButton");
+
+const planDate = document.querySelector("#planDate");
+const planForm = document.querySelector("#planForm");
+const planTopicSelect = document.querySelector("#planTopic");
+const planResourceSelect = document.querySelector("#planResource");
+const planTaskInput = document.querySelector("#planTask");
+const planSummary = document.querySelector("#planSummary");
+const planList = document.querySelector("#planList");
 
 showFormButton.addEventListener("click", () => {
   topicFormPanel.classList.remove("hidden");
@@ -189,6 +229,38 @@ resourceForm.addEventListener("submit", (event) => {
   render();
 });
 
+planTopicSelect.addEventListener("change", updatePlanResourceOptions);
+
+planForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const formData = new FormData(planForm);
+  const topicId = formData.get("topicId");
+  const task = formData.get("task").trim();
+
+  if (!topicId || !task) {
+    return;
+  }
+
+  const resourceId = formData.get("resourceId") || null;
+  const plan = {
+    id: `plan-${Date.now()}`,
+    date: getToday(),
+    topicId,
+    resourceId,
+    task,
+    isCompleted: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  plans = [plan, ...plans];
+  saveItems(PLAN_STORAGE_KEY, plans);
+  planForm.reset();
+  planTopicSelect.value = topicId;
+  updatePlanResourceOptions();
+  render();
+});
+
 topicDetail.addEventListener("click", (event) => {
   const addButton = event.target.closest("[data-add-resource-topic]");
   const resourceButton = event.target.closest("[data-view-resource]");
@@ -220,6 +292,20 @@ resourceDetail.addEventListener("click", (event) => {
   }
 });
 
+planList.addEventListener("click", (event) => {
+  const completeButton = event.target.closest("[data-toggle-plan]");
+  const deleteButton = event.target.closest("[data-delete-plan]");
+
+  if (completeButton) {
+    togglePlanCompleted(completeButton.dataset.togglePlan);
+    return;
+  }
+
+  if (deleteButton) {
+    deletePlan(deleteButton.dataset.deletePlan);
+  }
+});
+
 function loadItems(storageKey, fallbackItems) {
   const storedItems = localStorage.getItem(storageKey);
   if (!storedItems) {
@@ -240,12 +326,16 @@ function saveItems(storageKey, items) {
 function render() {
   updateParentOptions();
   updateResourceTopicOptions();
+  updatePlanTopicOptions();
+  updatePlanResourceOptions();
   renderTopicSummary();
   renderTopicList();
   renderTopicDetail();
   renderResourceSummary();
   renderResourceList();
   renderResourceDetail();
+  renderPlanHeader();
+  renderPlanList();
 }
 
 function renderTopicSummary() {
@@ -298,6 +388,7 @@ function renderTopicDetail() {
   const parent = topics.find((item) => item.id === topic.parentId);
   const children = topics.filter((item) => item.parentId === topic.id);
   const relatedResources = resources.filter((resource) => resource.topicId === topic.id);
+  const relatedTodayPlans = getTodayPlans().filter((plan) => plan.topicId === topic.id);
   const path = getTopicPath(topic);
 
   topicDetail.innerHTML = `
@@ -324,7 +415,7 @@ function renderTopicDetail() {
     <div class="detail-grid compact-grid">
       <div>
         <h3>今日计划</h3>
-        <p>后续功能中添加。</p>
+        <p>${relatedTodayPlans.length ? `今天有 ${relatedTodayPlans.length} 个任务。` : "今天还没有这个主题的计划。"}</p>
       </div>
       <div>
         <h3>学习笔记</h3>
@@ -420,6 +511,46 @@ function renderResourceDetail() {
   `;
 }
 
+function renderPlanHeader() {
+  planDate.textContent = `今天是 ${getToday()}，只记录今天要完成的学习任务。`;
+}
+
+function renderPlanList() {
+  const todayPlans = getTodayPlans();
+  const completedCount = todayPlans.filter((plan) => plan.isCompleted).length;
+  planSummary.textContent = `今天共有 ${todayPlans.length} 个任务，已完成 ${completedCount} 个。`;
+  planList.innerHTML = "";
+
+  if (!todayPlans.length) {
+    planList.innerHTML = '<p class="empty-state">今天还没有学习计划，可以先添加一个小任务。</p>';
+    return;
+  }
+
+  todayPlans.forEach((plan) => {
+    const topic = topics.find((item) => item.id === plan.topicId);
+    const resource = resources.find((item) => item.id === plan.resourceId);
+    const article = document.createElement("article");
+    article.className = plan.isCompleted ? "plan-card completed" : "plan-card";
+
+    article.innerHTML = `
+      <div class="plan-card-main">
+        <span class="plan-check">${plan.isCompleted ? "✓" : "□"}</span>
+        <div>
+          <h3>${escapeHtml(plan.task)}</h3>
+          <p>主题：${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
+          <p>资料：${escapeHtml(getPlanResourceLabel(plan, resource))}</p>
+        </div>
+      </div>
+      <div class="detail-actions">
+        <button class="secondary-button" type="button" data-toggle-plan="${escapeHtml(plan.id)}">${plan.isCompleted ? "取消完成" : "完成"}</button>
+        <button class="danger-button" type="button" data-delete-plan="${escapeHtml(plan.id)}">删除</button>
+      </div>
+    `;
+
+    planList.appendChild(article);
+  });
+}
+
 function openResourceForm(topicId = "", resourceId = "") {
   resourceFormPanel.classList.remove("hidden");
   updateResourceTopicOptions();
@@ -475,6 +606,28 @@ function deleteResource(resourceId) {
   render();
 }
 
+function togglePlanCompleted(planId) {
+  plans = plans.map((plan) => (plan.id === planId ? { ...plan, isCompleted: !plan.isCompleted } : plan));
+  saveItems(PLAN_STORAGE_KEY, plans);
+  render();
+}
+
+function deletePlan(planId) {
+  const plan = plans.find((item) => item.id === planId);
+  if (!plan) {
+    return;
+  }
+
+  const confirmed = window.confirm(`确定要删除“${plan.task}”吗？`);
+  if (!confirmed) {
+    return;
+  }
+
+  plans = plans.filter((item) => item.id !== planId);
+  saveItems(PLAN_STORAGE_KEY, plans);
+  render();
+}
+
 function updateParentOptions() {
   const direction = directionSelect.value;
   const parentOptions = topics.filter((topic) => topic.direction === direction);
@@ -499,6 +652,51 @@ function updateResourceTopicOptions() {
   });
 }
 
+function updatePlanTopicOptions() {
+  const currentValue = planTopicSelect.value;
+  planTopicSelect.innerHTML = "";
+
+  if (!topics.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "请先创建学习主题";
+    planTopicSelect.appendChild(option);
+    planTopicSelect.disabled = true;
+    planResourceSelect.disabled = true;
+    planTaskInput.disabled = true;
+    return;
+  }
+
+  planTopicSelect.disabled = false;
+  planTaskInput.disabled = false;
+
+  topics.forEach((topic) => {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    option.textContent = getTopicPath(topic);
+    planTopicSelect.appendChild(option);
+  });
+
+  if (topics.some((topic) => topic.id === currentValue)) {
+    planTopicSelect.value = currentValue;
+  }
+}
+
+function updatePlanResourceOptions() {
+  const topicId = planTopicSelect.value;
+  const relatedResources = resources.filter((resource) => resource.topicId === topicId);
+  planResourceSelect.innerHTML = '<option value="">不关联资料</option>';
+
+  relatedResources.forEach((resource) => {
+    const option = document.createElement("option");
+    option.value = resource.id;
+    option.textContent = resource.title;
+    planResourceSelect.appendChild(option);
+  });
+
+  planResourceSelect.disabled = !topics.length;
+}
+
 function groupByDirection(items) {
   return items.reduce((groups, topic) => {
     if (!groups[topic.direction]) {
@@ -515,7 +713,24 @@ function getTopicPath(topic) {
 }
 
 function getToday() {
-  return new Date().toISOString().slice(0, 10);
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayPlans() {
+  const today = getToday();
+  return plans.filter((plan) => plan.date === today);
+}
+
+function getPlanResourceLabel(plan, resource) {
+  if (!plan.resourceId) {
+    return "未关联资料";
+  }
+
+  return resource ? resource.title : "资料已删除";
 }
 
 function escapeHtml(value) {

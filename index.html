@@ -146,6 +146,51 @@
 
         <aside id="resourceDetail" class="panel topic-detail" aria-label="学习资料详情"></aside>
       </section>
+
+      <section class="page-header plan-header">
+        <div>
+          <p class="eyebrow">V1 第三个核心功能</p>
+          <h1>今日学习计划</h1>
+          <p id="planDate" class="intro"></p>
+        </div>
+      </section>
+
+      <section class="layout">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>新增今日任务</h2>
+            <p>选择一个学习主题，资料可以不选，然后写下今天要完成的小任务。</p>
+          </div>
+          <form id="planForm" class="topic-form">
+            <label>
+              学习主题
+              <select id="planTopic" name="topicId" required></select>
+            </label>
+
+            <label>
+              学习资料（可选）
+              <select id="planResource" name="resourceId"></select>
+            </label>
+
+            <label class="full-width">
+              今日学习任务
+              <textarea id="planTask" name="task" rows="3" placeholder="例如：看完 Transformer 入门视频前 20 分钟" required></textarea>
+            </label>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit">添加计划</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>今天的任务</h2>
+            <p id="planSummary"></p>
+          </div>
+          <div id="planList" class="plan-list"></div>
+        </section>
+      </section>
     </main>
 
     <script src="src/app.js"></script>
