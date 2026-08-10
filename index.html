@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Personal Learning System</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="page-header">
+        <div>
+          <p class="eyebrow">V1 第一个核心功能</p>
+          <h1>学习主题管理</h1>
+          <p class="intro">先记录你正在学习的方向、主题和状态，后续资料、计划、笔记都会关联到这里。</p>
+        </div>
+        <button id="showFormButton" class="primary-button" type="button">新建主题</button>
+      </section>
+
+      <section id="topicFormPanel" class="panel hidden" aria-label="新建学习主题">
+        <div class="panel-heading">
+          <h2>新建学习主题</h2>
+          <p>只填写最必要的信息，先让系统能用起来。</p>
+        </div>
+        <form id="topicForm" class="topic-form">
+          <label>
+            主题名称
+            <input id="topicName" name="name" type="text" placeholder="例如：雅思阅读" required />
+          </label>
+
+          <label>
+            学习方向
+            <select id="topicDirection" name="direction" required>
+              <option value="AI 学习">AI 学习</option>
+              <option value="雅思英语学习">雅思英语学习</option>
+            </select>
+          </label>
+
+          <label>
+            父主题
+            <select id="topicParent" name="parentId">
+              <option value="">无</option>
+            </select>
+          </label>
+
+          <label>
+            状态
+            <select id="topicStatus" name="status" required>
+              <option value="未开始">未开始</option>
+              <option value="学习中">学习中</option>
+              <option value="暂停">暂停</option>
+              <option value="已完成">已完成</option>
+            </select>
+          </label>
+
+          <label class="full-width">
+            主题描述
+            <textarea id="topicDescription" name="description" rows="3" placeholder="这个主题主要学习什么？"></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button class="primary-button" type="submit">保存主题</button>
+            <button id="cancelFormButton" class="secondary-button" type="button">取消</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="layout">
+        <section class="panel topic-list-panel">
+          <div class="panel-heading">
+            <h2>我的学习主题</h2>
+            <p id="topicSummary"></p>
+          </div>
+          <div id="topicList" class="topic-list"></div>
+        </section>
+
+        <aside id="topicDetail" class="panel topic-detail" aria-label="学习主题详情"></aside>
+      </section>
+    </main>
+
+    <script src="src/app.js"></script>
+  </body>
+</html>
