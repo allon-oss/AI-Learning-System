@@ -1,4 +1,5 @@
-const STORAGE_KEY = "personal-learning-system-topics";
+const TOPIC_STORAGE_KEY = "personal-learning-system-topics";
+const RESOURCE_STORAGE_KEY = "personal-learning-system-resources";
 
 const defaultTopics = [
   {
@@ -43,8 +44,41 @@ const defaultTopics = [
   },
 ];
 
-let topics = loadTopics();
+const defaultResources = [
+  {
+    id: "resource-ai-prompt-guide",
+    title: "Prompt Engineering 入门文章",
+    topicId: "topic-ai-prompt",
+    type: "文章",
+    status: "未开始",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "resource-ielts-reading-test",
+    title: "剑桥雅思 18 Test 1 Reading",
+    topicId: "topic-ielts-reading",
+    type: "真题",
+    status: "学习中",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "resource-ielts-paper",
+    title: "雅思阅读同义替换打印资料",
+    topicId: "topic-ielts-reading",
+    type: "纸质资料",
+    status: "学习中",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+];
+
+let topics = loadItems(TOPIC_STORAGE_KEY, defaultTopics);
+let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
 let selectedTopicId = topics[0]?.id || "";
+let selectedResourceId = resources[0]?.id || "";
+let editingResourceId = "";
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -55,6 +89,18 @@ const showFormButton = document.querySelector("#showFormButton");
 const cancelFormButton = document.querySelector("#cancelFormButton");
 const parentSelect = document.querySelector("#topicParent");
 const directionSelect = document.querySelector("#topicDirection");
+
+const resourceList = document.querySelector("#resourceList");
+const resourceDetail = document.querySelector("#resourceDetail");
+const resourceSummary = document.querySelector("#resourceSummary");
+const resourceFormPanel = document.querySelector("#resourceFormPanel");
+const resourceForm = document.querySelector("#resourceForm");
+const showResourceFormButton = document.querySelector("#showResourceFormButton");
+const cancelResourceFormButton = document.querySelector("#cancelResourceFormButton");
+const resourceTopicSelect = document.querySelector("#resourceTopic");
+const resourceFormTitle = document.querySelector("#resourceFormTitle");
+const resourceFormDescription = document.querySelector("#resourceFormDescription");
+const resourceSubmitButton = document.querySelector("#resourceSubmitButton");
 
 showFormButton.addEventListener("click", () => {
   topicFormPanel.classList.remove("hidden");
@@ -73,7 +119,7 @@ topicForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const formData = new FormData(topicForm);
-  const now = new Date().toISOString().slice(0, 10);
+  const now = getToday();
   const topic = {
     id: `topic-${Date.now()}`,
     name: formData.get("name").trim(),
@@ -87,37 +133,122 @@ topicForm.addEventListener("submit", (event) => {
 
   topics = [topic, ...topics];
   selectedTopicId = topic.id;
-  saveTopics();
+  saveItems(TOPIC_STORAGE_KEY, topics);
   topicForm.reset();
   topicFormPanel.classList.add("hidden");
   render();
 });
 
-function loadTopics() {
-  const storedTopics = localStorage.getItem(STORAGE_KEY);
-  if (!storedTopics) {
-    return defaultTopics;
+showResourceFormButton.addEventListener("click", () => {
+  openResourceForm();
+});
+
+cancelResourceFormButton.addEventListener("click", () => {
+  closeResourceForm();
+});
+
+resourceForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const formData = new FormData(resourceForm);
+  const now = getToday();
+
+  if (editingResourceId) {
+    resources = resources.map((resource) => {
+      if (resource.id !== editingResourceId) {
+        return resource;
+      }
+
+      return {
+        ...resource,
+        title: formData.get("title").trim(),
+        topicId: formData.get("topicId"),
+        type: formData.get("type"),
+        status: formData.get("status"),
+        updatedAt: now,
+      };
+    });
+    selectedResourceId = editingResourceId;
+  } else {
+    const resource = {
+      id: `resource-${Date.now()}`,
+      title: formData.get("title").trim(),
+      topicId: formData.get("topicId"),
+      type: formData.get("type"),
+      status: formData.get("status"),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    resources = [resource, ...resources];
+    selectedResourceId = resource.id;
+  }
+
+  saveItems(RESOURCE_STORAGE_KEY, resources);
+  closeResourceForm();
+  render();
+});
+
+topicDetail.addEventListener("click", (event) => {
+  const addButton = event.target.closest("[data-add-resource-topic]");
+  const resourceButton = event.target.closest("[data-view-resource]");
+
+  if (addButton) {
+    openResourceForm(addButton.dataset.addResourceTopic);
+    return;
+  }
+
+  if (resourceButton) {
+    selectedResourceId = resourceButton.dataset.viewResource;
+    renderResourceList();
+    renderResourceDetail();
+    document.querySelector("#resourceDetail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+});
+
+resourceDetail.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-resource]");
+  const deleteButton = event.target.closest("[data-delete-resource]");
+
+  if (editButton) {
+    openResourceForm("", editButton.dataset.editResource);
+    return;
+  }
+
+  if (deleteButton) {
+    deleteResource(deleteButton.dataset.deleteResource);
+  }
+});
+
+function loadItems(storageKey, fallbackItems) {
+  const storedItems = localStorage.getItem(storageKey);
+  if (!storedItems) {
+    return fallbackItems;
   }
 
   try {
-    return JSON.parse(storedTopics);
+    return JSON.parse(storedItems);
   } catch {
-    return defaultTopics;
+    return fallbackItems;
   }
 }
 
-function saveTopics() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(topics));
+function saveItems(storageKey, items) {
+  localStorage.setItem(storageKey, JSON.stringify(items));
 }
 
 function render() {
   updateParentOptions();
-  renderSummary();
+  updateResourceTopicOptions();
+  renderTopicSummary();
   renderTopicList();
   renderTopicDetail();
+  renderResourceSummary();
+  renderResourceList();
+  renderResourceDetail();
 }
 
-function renderSummary() {
+function renderTopicSummary() {
   const activeCount = topics.filter((topic) => topic.status === "学习中").length;
   topicSummary.textContent = `当前共有 ${topics.length} 个主题，其中 ${activeCount} 个正在学习。`;
 }
@@ -140,7 +271,8 @@ function renderTopicList() {
       button.className = topic.id === selectedTopicId ? "topic-card selected" : "topic-card";
       button.addEventListener("click", () => {
         selectedTopicId = topic.id;
-        render();
+        renderTopicList();
+        renderTopicDetail();
       });
 
       const parent = topics.find((item) => item.id === topic.parentId);
@@ -165,7 +297,8 @@ function renderTopicDetail() {
 
   const parent = topics.find((item) => item.id === topic.parentId);
   const children = topics.filter((item) => item.parentId === topic.id);
-  const path = parent ? `${topic.direction} > ${parent.name} > ${topic.name}` : `${topic.direction} > ${topic.name}`;
+  const relatedResources = resources.filter((resource) => resource.topicId === topic.id);
+  const path = getTopicPath(topic);
 
   topicDetail.innerHTML = `
     <div class="panel-heading">
@@ -181,11 +314,14 @@ function renderTopicDetail() {
       <h3>子主题</h3>
       ${children.length ? `<ul>${children.map((child) => `<li>${escapeHtml(child.name)} · ${escapeHtml(child.status)}</li>`).join("")}</ul>` : "<p>还没有子主题。</p>"}
     </div>
-    <div class="detail-grid">
-      <div>
+    <div class="detail-section">
+      <div class="section-title-row">
         <h3>相关资料</h3>
-        <p>后续功能中添加。</p>
+        <button class="small-button" type="button" data-add-resource-topic="${escapeHtml(topic.id)}">新增该主题的资料</button>
       </div>
+      ${renderRelatedResources(relatedResources)}
+    </div>
+    <div class="detail-grid compact-grid">
       <div>
         <h3>今日计划</h3>
         <p>后续功能中添加。</p>
@@ -202,6 +338,143 @@ function renderTopicDetail() {
   `;
 }
 
+function renderRelatedResources(relatedResources) {
+  if (!relatedResources.length) {
+    return "<p>这个主题还没有关联资料。</p>";
+  }
+
+  return `
+    <div class="mini-list">
+      ${relatedResources
+        .map(
+          (resource) => `
+            <button class="mini-card" type="button" data-view-resource="${escapeHtml(resource.id)}">
+              <span>${escapeHtml(resource.title)}</span>
+              <small>${escapeHtml(resource.type)} · ${escapeHtml(resource.status)}</small>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderResourceSummary() {
+  const activeCount = resources.filter((resource) => resource.status === "学习中").length;
+  resourceSummary.textContent = `当前共有 ${resources.length} 份资料，其中 ${activeCount} 份正在学习。`;
+}
+
+function renderResourceList() {
+  resourceList.innerHTML = "";
+
+  resources.forEach((resource) => {
+    const topic = topics.find((item) => item.id === resource.topicId);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = resource.id === selectedResourceId ? "topic-card selected" : "topic-card";
+    button.addEventListener("click", () => {
+      selectedResourceId = resource.id;
+      renderResourceList();
+      renderResourceDetail();
+    });
+
+    button.innerHTML = `
+      <span class="topic-card-title">${escapeHtml(resource.title)}</span>
+      <span class="topic-card-meta">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")} · ${escapeHtml(resource.type)} · ${escapeHtml(resource.status)}</span>
+      <span class="topic-card-description">这份资料用于支持对应学习主题。</span>
+    `;
+    resourceList.appendChild(button);
+  });
+}
+
+function renderResourceDetail() {
+  const resource = resources.find((item) => item.id === selectedResourceId);
+  if (!resource) {
+    resourceDetail.innerHTML = "<h2>请选择一份资料</h2><p>点击左侧资料后，可以查看它的详情。</p>";
+    return;
+  }
+
+  const topic = topics.find((item) => item.id === resource.topicId);
+  resourceDetail.innerHTML = `
+    <div class="panel-heading">
+      <p class="eyebrow">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
+      <h2>${escapeHtml(resource.title)}</h2>
+      <span class="status-pill">${escapeHtml(resource.status)}</span>
+    </div>
+    <div class="detail-actions">
+      <button class="secondary-button" type="button" data-edit-resource="${escapeHtml(resource.id)}">编辑资料</button>
+      <button class="danger-button" type="button" data-delete-resource="${escapeHtml(resource.id)}">删除资料</button>
+    </div>
+    <div class="detail-section">
+      <h3>所属学习主题</h3>
+      <p>${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
+    </div>
+    <div class="detail-section">
+      <h3>资料类型</h3>
+      <p>${escapeHtml(resource.type)}</p>
+    </div>
+    <div class="detail-section">
+      <h3>后续关联</h3>
+      <p>相关计划、学习笔记和学习进度会在后续功能中添加。</p>
+    </div>
+  `;
+}
+
+function openResourceForm(topicId = "", resourceId = "") {
+  resourceFormPanel.classList.remove("hidden");
+  updateResourceTopicOptions();
+
+  const resource = resources.find((item) => item.id === resourceId);
+  if (resource) {
+    editingResourceId = resource.id;
+    resourceFormTitle.textContent = "编辑学习资料";
+    resourceFormDescription.textContent = "修改资料基础信息后，资料列表和主题详情会同步更新。";
+    resourceSubmitButton.textContent = "保存修改";
+    document.querySelector("#resourceTitle").value = resource.title;
+    resourceTopicSelect.value = resource.topicId;
+    document.querySelector("#resourceType").value = resource.type;
+    document.querySelector("#resourceStatus").value = resource.status;
+  } else {
+    editingResourceId = "";
+    resourceForm.reset();
+    resourceFormTitle.textContent = "新增学习资料";
+    resourceFormDescription.textContent = "V1 只记录资料的基础信息，不做上传、OCR 或 AI 自动整理。";
+    resourceSubmitButton.textContent = "保存资料";
+    if (topicId) {
+      resourceTopicSelect.value = topicId;
+    }
+  }
+
+  document.querySelector("#resourceTitle").focus();
+}
+
+function closeResourceForm() {
+  editingResourceId = "";
+  resourceForm.reset();
+  resourceFormPanel.classList.add("hidden");
+  resourceFormTitle.textContent = "新增学习资料";
+  resourceFormDescription.textContent = "V1 只记录资料的基础信息，不做上传、OCR 或 AI 自动整理。";
+  resourceSubmitButton.textContent = "保存资料";
+  updateResourceTopicOptions();
+}
+
+function deleteResource(resourceId) {
+  const resource = resources.find((item) => item.id === resourceId);
+  if (!resource) {
+    return;
+  }
+
+  const confirmed = window.confirm(`确定要删除“${resource.title}”吗？删除后它会从资料列表和主题详情中消失。`);
+  if (!confirmed) {
+    return;
+  }
+
+  resources = resources.filter((item) => item.id !== resourceId);
+  selectedResourceId = resources[0]?.id || "";
+  saveItems(RESOURCE_STORAGE_KEY, resources);
+  render();
+}
+
 function updateParentOptions() {
   const direction = directionSelect.value;
   const parentOptions = topics.filter((topic) => topic.direction === direction);
@@ -215,6 +488,17 @@ function updateParentOptions() {
   });
 }
 
+function updateResourceTopicOptions() {
+  resourceTopicSelect.innerHTML = "";
+
+  topics.forEach((topic) => {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    option.textContent = getTopicPath(topic);
+    resourceTopicSelect.appendChild(option);
+  });
+}
+
 function groupByDirection(items) {
   return items.reduce((groups, topic) => {
     if (!groups[topic.direction]) {
@@ -223,6 +507,15 @@ function groupByDirection(items) {
     groups[topic.direction].push(topic);
     return groups;
   }, {});
+}
+
+function getTopicPath(topic) {
+  const parent = topics.find((item) => item.id === topic.parentId);
+  return parent ? `${topic.direction} > ${parent.name} > ${topic.name}` : `${topic.direction} > ${topic.name}`;
+}
+
+function getToday() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function escapeHtml(value) {

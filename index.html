@@ -76,6 +76,76 @@
 
         <aside id="topicDetail" class="panel topic-detail" aria-label="学习主题详情"></aside>
       </section>
+
+      <section class="page-header resource-header">
+        <div>
+          <p class="eyebrow">V1 第二个核心功能</p>
+          <h1>学习资料管理</h1>
+          <p class="intro">手动记录学习资料，并把每一份资料关联到对应学习主题。</p>
+        </div>
+        <button id="showResourceFormButton" class="primary-button" type="button">新增资料</button>
+      </section>
+
+      <section id="resourceFormPanel" class="panel hidden" aria-label="新增学习资料">
+        <div class="panel-heading">
+          <h2 id="resourceFormTitle">新增学习资料</h2>
+          <p id="resourceFormDescription">V1 只记录资料的基础信息，不做上传、OCR 或 AI 自动整理。</p>
+        </div>
+        <form id="resourceForm" class="topic-form">
+          <label>
+            资料标题
+            <input id="resourceTitle" name="title" type="text" placeholder="例如：剑桥雅思 18 Test 1 Reading" required />
+          </label>
+
+          <label>
+            所属学习主题
+            <select id="resourceTopic" name="topicId" required></select>
+          </label>
+
+          <label>
+            资料类型
+            <select id="resourceType" name="type" required>
+              <option value="文章">文章</option>
+              <option value="视频">视频</option>
+              <option value="课程">课程</option>
+              <option value="文档">文档</option>
+              <option value="书籍">书籍</option>
+              <option value="PDF">PDF</option>
+              <option value="真题">真题</option>
+              <option value="单词表">单词表</option>
+              <option value="纸质资料">纸质资料</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+
+          <label>
+            学习状态
+            <select id="resourceStatus" name="status" required>
+              <option value="未开始">未开始</option>
+              <option value="学习中">学习中</option>
+              <option value="暂停">暂停</option>
+              <option value="已完成">已完成</option>
+            </select>
+          </label>
+
+          <div class="form-actions">
+            <button id="resourceSubmitButton" class="primary-button" type="submit">保存资料</button>
+            <button id="cancelResourceFormButton" class="secondary-button" type="button">取消</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="layout">
+        <section class="panel topic-list-panel">
+          <div class="panel-heading">
+            <h2>全部学习资料</h2>
+            <p id="resourceSummary"></p>
+          </div>
+          <div id="resourceList" class="topic-list"></div>
+        </section>
+
+        <aside id="resourceDetail" class="panel topic-detail" aria-label="学习资料详情"></aside>
+      </section>
     </main>
 
     <script src="src/app.js"></script>
