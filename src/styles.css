@@ -43,6 +43,10 @@ textarea {
   margin-top: 44px;
 }
 
+.note-header {
+  margin-top: 44px;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: #63746a;
@@ -171,6 +175,13 @@ textarea {
   gap: 12px;
 }
 
+.form-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #216e4e;
+  line-height: 1.5;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -256,6 +267,10 @@ textarea {
 .detail-grid p {
   color: #405148;
   line-height: 1.7;
+}
+
+.note-content {
+  white-space: pre-wrap;
 }
 
 .detail-section ul {

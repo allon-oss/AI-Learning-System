@@ -1,6 +1,19 @@
 const TOPIC_STORAGE_KEY = "personal-learning-system-topics";
 const RESOURCE_STORAGE_KEY = "personal-learning-system-resources";
 const PLAN_STORAGE_KEY = "personal-learning-system-plans";
+const NOTE_STORAGE_KEY = "personal-learning-system-notes";
+
+/**
+ * @typedef {Object} Note
+ * @property {string} id
+ * @property {string} topicId
+ * @property {string} title
+ * @property {string} content
+ * @property {string | null} resourceId
+ * @property {string | null} planId
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
 
 const defaultTopics = [
   {
@@ -108,9 +121,13 @@ const defaultResources = [
 let topics = loadItems(TOPIC_STORAGE_KEY, defaultTopics);
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
 let plans = loadItems(PLAN_STORAGE_KEY, []);
+/** @type {Note[]} */
+let notes = loadItems(NOTE_STORAGE_KEY, []);
 let selectedTopicId = topics[0]?.id || "";
 let selectedResourceId = resources[0]?.id || "";
+let selectedNoteId = notes[0]?.id || "";
 let editingResourceId = "";
+let editingNoteId = "";
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -141,6 +158,20 @@ const planResourceSelect = document.querySelector("#planResource");
 const planTaskInput = document.querySelector("#planTask");
 const planSummary = document.querySelector("#planSummary");
 const planList = document.querySelector("#planList");
+
+const noteForm = document.querySelector("#noteForm");
+const noteFormPanel = document.querySelector("#noteFormPanel");
+const noteFormTitle = document.querySelector("#noteFormTitle");
+const noteFormDescription = document.querySelector("#noteFormDescription");
+const noteTopicSelect = document.querySelector("#noteTopic");
+const noteResourceSelect = document.querySelector("#noteResource");
+const notePlanSelect = document.querySelector("#notePlan");
+const noteSubmitButton = document.querySelector("#noteSubmitButton");
+const cancelNoteEditButton = document.querySelector("#cancelNoteEditButton");
+const noteSaveMessage = document.querySelector("#noteSaveMessage");
+const noteList = document.querySelector("#noteList");
+const noteDetail = document.querySelector("#noteDetail");
+const noteSummary = document.querySelector("#noteSummary");
 
 showFormButton.addEventListener("click", () => {
   topicFormPanel.classList.remove("hidden");
@@ -231,6 +262,10 @@ resourceForm.addEventListener("submit", (event) => {
 
 planTopicSelect.addEventListener("change", updatePlanResourceOptions);
 
+noteTopicSelect.addEventListener("change", updateNoteRelatedOptions);
+
+cancelNoteEditButton.addEventListener("click", resetNoteForm);
+
 planForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -259,6 +294,62 @@ planForm.addEventListener("submit", (event) => {
   planTopicSelect.value = topicId;
   updatePlanResourceOptions();
   render();
+});
+
+noteForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const formData = new FormData(noteForm);
+  const title = formData.get("title").trim();
+  const content = formData.get("content").trim();
+  const topicId = formData.get("topicId");
+
+  if (!title || !content || !topicId) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const isEditing = Boolean(editingNoteId);
+  let savedNoteId = editingNoteId;
+
+  if (isEditing) {
+    notes = notes.map((note) => {
+      if (note.id !== editingNoteId) {
+        return note;
+      }
+
+      return {
+        ...note,
+        title,
+        content,
+        topicId,
+        resourceId: formData.get("resourceId") || null,
+        planId: formData.get("planId") || null,
+        updatedAt: now,
+      };
+    });
+  } else {
+    const note = {
+      id: `note-${Date.now()}`,
+      title,
+      content,
+      topicId,
+      resourceId: formData.get("resourceId") || null,
+      planId: formData.get("planId") || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    notes = [note, ...notes];
+    savedNoteId = note.id;
+  }
+
+  selectedNoteId = savedNoteId;
+  saveItems(NOTE_STORAGE_KEY, notes);
+  resetNoteForm();
+  noteSaveMessage.textContent = isEditing ? "笔记已更新。" : "笔记已保存。";
+  renderNoteList();
+  renderNoteDetail();
 });
 
 topicDetail.addEventListener("click", (event) => {
@@ -306,6 +397,31 @@ planList.addEventListener("click", (event) => {
   }
 });
 
+noteList.addEventListener("click", (event) => {
+  const noteButton = event.target.closest("[data-view-note]");
+  if (!noteButton) {
+    return;
+  }
+
+  selectedNoteId = noteButton.dataset.viewNote;
+  renderNoteList();
+  renderNoteDetail();
+});
+
+noteDetail.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-note]");
+  const deleteButton = event.target.closest("[data-delete-note]");
+
+  if (editButton) {
+    startNoteEditing(editButton.dataset.editNote);
+    return;
+  }
+
+  if (deleteButton) {
+    deleteNote(deleteButton.dataset.deleteNote);
+  }
+});
+
 function loadItems(storageKey, fallbackItems) {
   const storedItems = localStorage.getItem(storageKey);
   if (!storedItems) {
@@ -328,6 +444,8 @@ function render() {
   updateResourceTopicOptions();
   updatePlanTopicOptions();
   updatePlanResourceOptions();
+  updateNoteTopicOptions();
+  updateNoteRelatedOptions();
   renderTopicSummary();
   renderTopicList();
   renderTopicDetail();
@@ -336,6 +454,9 @@ function render() {
   renderResourceDetail();
   renderPlanHeader();
   renderPlanList();
+  renderNoteSummary();
+  renderNoteList();
+  renderNoteDetail();
 }
 
 function renderTopicSummary() {
@@ -551,6 +672,141 @@ function renderPlanList() {
   });
 }
 
+function renderNoteSummary() {
+  noteSummary.textContent = `当前共有 ${notes.length} 条笔记。`;
+}
+
+function renderNoteList() {
+  const sortedNotes = [...notes].sort((first, second) => new Date(second.updatedAt) - new Date(first.updatedAt));
+  noteList.innerHTML = "";
+
+  if (!sortedNotes.length) {
+    noteList.innerHTML = '<p class="empty-state">还没有学习笔记，先记录一次学习收获吧。</p>';
+    return;
+  }
+
+  sortedNotes.forEach((note) => {
+    const topic = topics.find((item) => item.id === note.topicId);
+    const button = document.createElement("button");
+    button.className = note.id === selectedNoteId ? "topic-card selected" : "topic-card";
+    button.type = "button";
+    button.dataset.viewNote = note.id;
+    button.innerHTML = `
+      <span class="topic-card-title">${escapeHtml(note.title)}</span>
+      <span class="topic-card-meta">${escapeHtml(topic ? getTopicPath(topic) : "所属主题已删除")}</span>
+      <span class="topic-card-meta">更新于 ${escapeHtml(formatDateTime(note.updatedAt))}</span>
+    `;
+    noteList.appendChild(button);
+  });
+}
+
+function renderNoteDetail() {
+  const note = notes.find((item) => item.id === selectedNoteId);
+  if (!note) {
+    noteDetail.innerHTML = '<p class="empty-state">选择一条笔记后，可以在这里查看完整内容。</p>';
+    return;
+  }
+
+  const topic = topics.find((item) => item.id === note.topicId);
+  const resource = resources.find((item) => item.id === note.resourceId);
+  const plan = plans.find((item) => item.id === note.planId);
+  const resourceLabel = note.resourceId ? (resource ? resource.title : "关联资料已删除") : "未关联资料";
+  const planLabel = note.planId ? (plan ? plan.task : "关联学习计划已删除") : "未关联学习计划";
+
+  noteDetail.innerHTML = `
+    <div class="panel-heading">
+      <p class="eyebrow">${escapeHtml(topic ? getTopicPath(topic) : "所属主题已删除")}</p>
+      <h2>${escapeHtml(note.title)}</h2>
+    </div>
+    <div class="detail-actions">
+      <button class="secondary-button" type="button" data-edit-note="${escapeHtml(note.id)}">编辑笔记</button>
+      <button class="danger-button" type="button" data-delete-note="${escapeHtml(note.id)}">删除笔记</button>
+    </div>
+    <div class="detail-section">
+      <h3>笔记内容</h3>
+      <p class="note-content">${escapeHtml(note.content)}</p>
+    </div>
+    <div class="detail-section">
+      <h3>所属学习主题</h3>
+      <p>${escapeHtml(topic ? getTopicPath(topic) : "所属主题已删除")}</p>
+    </div>
+    <div class="detail-section">
+      <h3>关联学习资料</h3>
+      <p>${escapeHtml(resourceLabel)}</p>
+    </div>
+    <div class="detail-section">
+      <h3>关联学习计划</h3>
+      <p>${escapeHtml(planLabel)}</p>
+    </div>
+    <div class="detail-section">
+      <h3>记录时间</h3>
+      <p>创建于 ${escapeHtml(formatDateTime(note.createdAt))}</p>
+      <p>更新于 ${escapeHtml(formatDateTime(note.updatedAt))}</p>
+    </div>
+  `;
+}
+
+function startNoteEditing(noteId) {
+  const note = notes.find((item) => item.id === noteId);
+  if (!note) {
+    return;
+  }
+
+  editingNoteId = note.id;
+  noteFormPanel.setAttribute("aria-label", "编辑学习笔记");
+  noteFormTitle.textContent = "编辑笔记";
+  noteFormDescription.textContent = "修改笔记内容或关联信息后，创建时间会保持不变。";
+  noteSubmitButton.textContent = "保存修改";
+  cancelNoteEditButton.classList.remove("hidden");
+  noteSaveMessage.textContent = "";
+  updateNoteTopicOptions();
+  noteTopicSelect.value = note.topicId;
+  updateNoteRelatedOptions();
+  noteResourceSelect.value = note.resourceId || "";
+  notePlanSelect.value = note.planId || "";
+  document.querySelector("#noteTitle").value = note.title;
+  document.querySelector("#noteContent").value = note.content;
+  noteFormPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelector("#noteTitle").focus();
+}
+
+function resetNoteForm() {
+  editingNoteId = "";
+  noteForm.reset();
+  noteFormPanel.setAttribute("aria-label", "新增学习笔记");
+  noteFormTitle.textContent = "新增笔记";
+  noteFormDescription.textContent = "先选择所属学习主题；资料和学习计划可以不选。";
+  noteSubmitButton.textContent = "保存笔记";
+  cancelNoteEditButton.classList.add("hidden");
+  updateNoteTopicOptions();
+  updateNoteRelatedOptions();
+}
+
+function deleteNote(noteId) {
+  const note = notes.find((item) => item.id === noteId);
+  if (!note) {
+    return;
+  }
+
+  const confirmed = window.confirm(`确定要删除“${note.title}”吗？删除后无法恢复。`);
+  if (!confirmed) {
+    return;
+  }
+
+  notes = notes.filter((item) => item.id !== noteId);
+  selectedNoteId = [...notes].sort((first, second) => new Date(second.updatedAt) - new Date(first.updatedAt))[0]?.id || "";
+  saveItems(NOTE_STORAGE_KEY, notes);
+
+  if (editingNoteId === noteId) {
+    resetNoteForm();
+  }
+
+  noteSaveMessage.textContent = "笔记已删除。";
+  renderNoteSummary();
+  renderNoteList();
+  renderNoteDetail();
+}
+
 function openResourceForm(topicId = "", resourceId = "") {
   resourceFormPanel.classList.remove("hidden");
   updateResourceTopicOptions();
@@ -697,6 +953,59 @@ function updatePlanResourceOptions() {
   planResourceSelect.disabled = !topics.length;
 }
 
+function updateNoteTopicOptions() {
+  const currentValue = noteTopicSelect.value;
+  noteTopicSelect.innerHTML = "";
+
+  if (!topics.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "请先创建学习主题";
+    noteTopicSelect.appendChild(option);
+    noteTopicSelect.disabled = true;
+    noteResourceSelect.disabled = true;
+    notePlanSelect.disabled = true;
+    return;
+  }
+
+  noteTopicSelect.disabled = false;
+  topics.forEach((topic) => {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    option.textContent = getTopicPath(topic);
+    noteTopicSelect.appendChild(option);
+  });
+
+  if (topics.some((topic) => topic.id === currentValue)) {
+    noteTopicSelect.value = currentValue;
+  }
+}
+
+function updateNoteRelatedOptions() {
+  const topicId = noteTopicSelect.value;
+  const relatedResources = resources.filter((resource) => resource.topicId === topicId);
+  const relatedPlans = plans.filter((plan) => plan.topicId === topicId);
+
+  noteResourceSelect.innerHTML = '<option value="">不关联资料</option>';
+  relatedResources.forEach((resource) => {
+    const option = document.createElement("option");
+    option.value = resource.id;
+    option.textContent = resource.title;
+    noteResourceSelect.appendChild(option);
+  });
+
+  notePlanSelect.innerHTML = '<option value="">不关联学习计划</option>';
+  relatedPlans.forEach((plan) => {
+    const option = document.createElement("option");
+    option.value = plan.id;
+    option.textContent = plan.task;
+    notePlanSelect.appendChild(option);
+  });
+
+  noteResourceSelect.disabled = !topics.length;
+  notePlanSelect.disabled = !topics.length;
+}
+
 function groupByDirection(items) {
   return items.reduce((groups, topic) => {
     if (!groups[topic.direction]) {
@@ -731,6 +1040,15 @@ function getPlanResourceLabel(plan, resource) {
   }
 
   return resource ? resource.title : "资料已删除";
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
 }
 
 function escapeHtml(value) {

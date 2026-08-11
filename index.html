@@ -191,6 +191,65 @@
           <div id="planList" class="plan-list"></div>
         </section>
       </section>
+
+      <section class="page-header note-header">
+        <div>
+          <p class="eyebrow">V1 第四个核心功能</p>
+          <h1>学习笔记</h1>
+          <p class="intro">记录学习过程中的思考、总结和收获，并关联到对应的主题、资料或学习计划。</p>
+        </div>
+      </section>
+
+      <section id="noteFormPanel" class="panel" aria-label="新增学习笔记">
+        <div class="panel-heading">
+          <h2 id="noteFormTitle">新增笔记</h2>
+          <p id="noteFormDescription">先选择所属学习主题；资料和学习计划可以不选。</p>
+        </div>
+        <form id="noteForm" class="topic-form">
+          <label>
+            笔记标题
+            <input id="noteTitle" name="title" type="text" placeholder="例如：Transformer 注意力机制的理解" required />
+          </label>
+
+          <label>
+            所属学习主题
+            <select id="noteTopic" name="topicId" required></select>
+          </label>
+
+          <label>
+            关联学习资料（可选）
+            <select id="noteResource" name="resourceId"></select>
+          </label>
+
+          <label>
+            关联学习计划（可选）
+            <select id="notePlan" name="planId"></select>
+          </label>
+
+          <label class="full-width">
+            笔记内容
+            <textarea id="noteContent" name="content" rows="8" placeholder="记录这次学习的重点、思考、问题或收获。" required></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button id="noteSubmitButton" class="primary-button" type="submit">保存笔记</button>
+            <button id="cancelNoteEditButton" class="secondary-button hidden" type="button">取消编辑</button>
+          </div>
+          <p id="noteSaveMessage" class="form-message" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="layout">
+        <section class="panel topic-list-panel">
+          <div class="panel-heading">
+            <h2>全部笔记</h2>
+            <p id="noteSummary"></p>
+          </div>
+          <div id="noteList" class="topic-list"></div>
+        </section>
+
+        <aside id="noteDetail" class="panel topic-detail" aria-label="学习笔记详情"></aside>
+      </section>
     </main>
 
     <script src="src/app.js"></script>
