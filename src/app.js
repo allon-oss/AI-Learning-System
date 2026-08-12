@@ -2,6 +2,7 @@ const TOPIC_STORAGE_KEY = "personal-learning-system-topics";
 const RESOURCE_STORAGE_KEY = "personal-learning-system-resources";
 const PLAN_STORAGE_KEY = "personal-learning-system-plans";
 const NOTE_STORAGE_KEY = "personal-learning-system-notes";
+const PROGRESS_STORAGE_KEY = "personal-learning-system-progress-records";
 
 /**
  * @typedef {Object} Note
@@ -11,6 +12,20 @@ const NOTE_STORAGE_KEY = "personal-learning-system-notes";
  * @property {string} content
  * @property {string | null} resourceId
  * @property {string | null} planId
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
+
+/**
+ * @typedef {Object} ProgressRecord
+ * @property {string} id
+ * @property {string} date
+ * @property {string} topicId
+ * @property {string | null} resourceId
+ * @property {string | null} planId
+ * @property {number} durationMinutes
+ * @property {number} completionPercent
+ * @property {string} reflection
  * @property {string} createdAt
  * @property {string} updatedAt
  */
@@ -123,11 +138,14 @@ let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
 let plans = loadItems(PLAN_STORAGE_KEY, []);
 /** @type {Note[]} */
 let notes = loadItems(NOTE_STORAGE_KEY, []);
+/** @type {ProgressRecord[]} */
+let progressRecords = loadItems(PROGRESS_STORAGE_KEY, []);
 let selectedTopicId = topics[0]?.id || "";
 let selectedResourceId = resources[0]?.id || "";
 let selectedNoteId = notes[0]?.id || "";
 let editingResourceId = "";
 let editingNoteId = "";
+let editingProgressId = "";
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -172,6 +190,21 @@ const noteSaveMessage = document.querySelector("#noteSaveMessage");
 const noteList = document.querySelector("#noteList");
 const noteDetail = document.querySelector("#noteDetail");
 const noteSummary = document.querySelector("#noteSummary");
+
+const progressForm = document.querySelector("#progressForm");
+const progressFormPanel = document.querySelector("#progressFormPanel");
+const progressFormTitle = document.querySelector("#progressFormTitle");
+const progressFormDescription = document.querySelector("#progressFormDescription");
+const progressDate = document.querySelector("#progressDate");
+const progressTopicSelect = document.querySelector("#progressTopic");
+const progressResourceSelect = document.querySelector("#progressResource");
+const progressPlanSelect = document.querySelector("#progressPlan");
+const progressSubmitButton = document.querySelector("#progressSubmitButton");
+const cancelProgressEditButton = document.querySelector("#cancelProgressEditButton");
+const progressSaveMessage = document.querySelector("#progressSaveMessage");
+const progressOverview = document.querySelector("#progressOverview");
+const progressSummary = document.querySelector("#progressSummary");
+const progressList = document.querySelector("#progressList");
 
 showFormButton.addEventListener("click", () => {
   topicFormPanel.classList.remove("hidden");
@@ -264,7 +297,11 @@ planTopicSelect.addEventListener("change", updatePlanResourceOptions);
 
 noteTopicSelect.addEventListener("change", updateNoteRelatedOptions);
 
+progressTopicSelect.addEventListener("change", updateProgressRelatedOptions);
+
 cancelNoteEditButton.addEventListener("click", resetNoteForm);
+
+cancelProgressEditButton.addEventListener("click", resetProgressForm);
 
 planForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -352,6 +389,65 @@ noteForm.addEventListener("submit", (event) => {
   renderNoteDetail();
 });
 
+progressForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const formData = new FormData(progressForm);
+  const topicId = formData.get("topicId");
+  const durationMinutes = Number(formData.get("durationMinutes"));
+  const completionPercent = Number(formData.get("completionPercent"));
+  const reflection = formData.get("reflection").trim();
+
+  if (!topicId || !Number.isInteger(durationMinutes) || durationMinutes <= 0 || !Number.isInteger(completionPercent) || completionPercent < 0 || completionPercent > 100) {
+    progressSaveMessage.textContent = "请填写有效的学习时长和完成度。";
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const isEditing = Boolean(editingProgressId);
+  let savedProgressId = editingProgressId;
+
+  if (isEditing) {
+    progressRecords = progressRecords.map((progress) => {
+      if (progress.id !== editingProgressId) {
+        return progress;
+      }
+
+      return {
+        ...progress,
+        topicId,
+        resourceId: formData.get("resourceId") || null,
+        planId: formData.get("planId") || null,
+        durationMinutes,
+        completionPercent,
+        reflection,
+        updatedAt: now,
+      };
+    });
+  } else {
+    const progress = {
+      id: `progress-${Date.now()}`,
+      date: getToday(),
+      topicId,
+      resourceId: formData.get("resourceId") || null,
+      planId: formData.get("planId") || null,
+      durationMinutes,
+      completionPercent,
+      reflection,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    progressRecords = [progress, ...progressRecords];
+    savedProgressId = progress.id;
+  }
+
+  saveItems(PROGRESS_STORAGE_KEY, progressRecords);
+  resetProgressForm();
+  progressSaveMessage.textContent = isEditing ? "进度记录已更新。" : "进度记录已保存。";
+  render();
+});
+
 topicDetail.addEventListener("click", (event) => {
   const addButton = event.target.closest("[data-add-resource-topic]");
   const resourceButton = event.target.closest("[data-view-resource]");
@@ -422,6 +518,20 @@ noteDetail.addEventListener("click", (event) => {
   }
 });
 
+progressList.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-progress]");
+  const deleteButton = event.target.closest("[data-delete-progress]");
+
+  if (editButton) {
+    startProgressEditing(editButton.dataset.editProgress);
+    return;
+  }
+
+  if (deleteButton) {
+    deleteProgress(deleteButton.dataset.deleteProgress);
+  }
+});
+
 function loadItems(storageKey, fallbackItems) {
   const storedItems = localStorage.getItem(storageKey);
   if (!storedItems) {
@@ -440,12 +550,17 @@ function saveItems(storageKey, items) {
 }
 
 function render() {
+  if (!editingProgressId) {
+    progressDate.textContent = getToday();
+  }
   updateParentOptions();
   updateResourceTopicOptions();
   updatePlanTopicOptions();
   updatePlanResourceOptions();
   updateNoteTopicOptions();
   updateNoteRelatedOptions();
+  updateProgressTopicOptions();
+  updateProgressRelatedOptions();
   renderTopicSummary();
   renderTopicList();
   renderTopicDetail();
@@ -457,6 +572,8 @@ function render() {
   renderNoteSummary();
   renderNoteList();
   renderNoteDetail();
+  renderProgressOverview();
+  renderProgressList();
 }
 
 function renderTopicSummary() {
@@ -510,6 +627,8 @@ function renderTopicDetail() {
   const children = topics.filter((item) => item.parentId === topic.id);
   const relatedResources = resources.filter((resource) => resource.topicId === topic.id);
   const relatedTodayPlans = getTodayPlans().filter((plan) => plan.topicId === topic.id);
+  const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.topicId === topic.id);
+  const relatedDuration = getTotalDuration(relatedProgressRecords);
   const path = getTopicPath(topic);
 
   topicDetail.innerHTML = `
@@ -540,12 +659,16 @@ function renderTopicDetail() {
       </div>
       <div>
         <h3>学习笔记</h3>
-        <p>后续功能中添加。</p>
+        <p>${notes.filter((note) => note.topicId === topic.id).length ? `已有 ${notes.filter((note) => note.topicId === topic.id).length} 条笔记。` : "还没有这个主题的笔记。"}</p>
       </div>
       <div>
         <h3>学习进度</h3>
-        <p>后续功能中添加。</p>
+        <p>${relatedProgressRecords.length ? `累计 ${relatedDuration} 分钟，记录 ${relatedProgressRecords.length} 次。` : "还没有学习进度记录。"}</p>
       </div>
+    </div>
+    <div class="detail-section">
+      <h3>最近学习进度</h3>
+      ${renderRecentProgressRecords(relatedProgressRecords, "这个主题还没有学习进度记录。")}
     </div>
   `;
 }
@@ -607,6 +730,7 @@ function renderResourceDetail() {
   }
 
   const topic = topics.find((item) => item.id === resource.topicId);
+  const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.resourceId === resource.id);
   resourceDetail.innerHTML = `
     <div class="panel-heading">
       <p class="eyebrow">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
@@ -626,8 +750,9 @@ function renderResourceDetail() {
       <p>${escapeHtml(resource.type)}</p>
     </div>
     <div class="detail-section">
-      <h3>后续关联</h3>
-      <p>相关计划、学习笔记和学习进度会在后续功能中添加。</p>
+      <h3>学习进度</h3>
+      <p>${relatedProgressRecords.length ? `已有 ${relatedProgressRecords.length} 条关联记录，累计 ${getTotalDuration(relatedProgressRecords)} 分钟。` : "还没有关联的学习进度记录。"}</p>
+      ${renderRecentProgressRecords(relatedProgressRecords, "")}
     </div>
   `;
 }
@@ -650,6 +775,7 @@ function renderPlanList() {
   todayPlans.forEach((plan) => {
     const topic = topics.find((item) => item.id === plan.topicId);
     const resource = resources.find((item) => item.id === plan.resourceId);
+    const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.planId === plan.id);
     const article = document.createElement("article");
     article.className = plan.isCompleted ? "plan-card completed" : "plan-card";
 
@@ -660,6 +786,7 @@ function renderPlanList() {
           <h3>${escapeHtml(plan.task)}</h3>
           <p>主题：${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
           <p>资料：${escapeHtml(getPlanResourceLabel(plan, resource))}</p>
+          <p>学习进度：${relatedProgressRecords.length ? `${relatedProgressRecords.length} 条，累计 ${getTotalDuration(relatedProgressRecords)} 分钟` : "暂无记录"}</p>
         </div>
       </div>
       <div class="detail-actions">
@@ -805,6 +932,142 @@ function deleteNote(noteId) {
   renderNoteSummary();
   renderNoteList();
   renderNoteDetail();
+}
+
+function renderProgressOverview() {
+  const totalDuration = getTotalDuration(progressRecords);
+  const sortedProgressRecords = getSortedProgressRecords();
+  const latestDate = sortedProgressRecords[0]?.date || "暂无记录";
+
+  progressOverview.innerHTML = `
+    <div>
+      <h3>累计学习时长</h3>
+      <p>${totalDuration} 分钟</p>
+    </div>
+    <div>
+      <h3>进度记录次数</h3>
+      <p>${progressRecords.length} 次</p>
+    </div>
+    <div>
+      <h3>最近记录日期</h3>
+      <p>${escapeHtml(latestDate)}</p>
+    </div>
+  `;
+}
+
+function renderProgressList() {
+  const sortedProgressRecords = getSortedProgressRecords();
+  progressSummary.textContent = `当前共有 ${sortedProgressRecords.length} 条进度记录。`;
+  progressList.innerHTML = "";
+
+  if (!sortedProgressRecords.length) {
+    progressList.innerHTML = '<p class="empty-state">还没有学习进度记录，完成一次学习后就来记一笔吧。</p>';
+    return;
+  }
+
+  sortedProgressRecords.forEach((progress) => {
+    const article = document.createElement("article");
+    article.className = "progress-card";
+    article.innerHTML = renderProgressRecordCard(progress, true);
+    progressList.appendChild(article);
+  });
+}
+
+function renderRecentProgressRecords(progressRecordsToRender, emptyMessage) {
+  if (!progressRecordsToRender.length) {
+    return emptyMessage ? `<p>${escapeHtml(emptyMessage)}</p>` : "";
+  }
+
+  return `
+    <div class="mini-list">
+      ${progressRecordsToRender
+        .slice(0, 3)
+        .map((progress) => `<article class="progress-card">${renderProgressRecordCard(progress)}</article>`)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderProgressRecordCard(progress, includeActions = false) {
+  const topic = topics.find((item) => item.id === progress.topicId);
+  const resource = resources.find((item) => item.id === progress.resourceId);
+  const plan = plans.find((item) => item.id === progress.planId);
+  const resourceLabel = progress.resourceId ? (resource ? resource.title : "原关联资料已删除") : "未关联资料";
+  const planLabel = progress.planId ? (plan ? plan.task : "原关联计划已删除") : "未关联计划";
+  const completion = getCompletionStatus(progress.completionPercent);
+
+  return `
+    <div class="progress-card-header">
+      <h3>${escapeHtml(progress.date)} · ${escapeHtml(topic ? topic.name : "原关联主题已删除")}</h3>
+      <span class="completion-pill ${completion.className}">${escapeHtml(completion.label)} ${progress.completionPercent}%</span>
+    </div>
+    <div class="progress-card-meta">
+      <span>时长：${progress.durationMinutes} 分钟</span>
+      <span>资料：${escapeHtml(resourceLabel)}</span>
+      <span>计划：${escapeHtml(planLabel)}</span>
+    </div>
+    ${progress.reflection ? `<p>总结：${escapeHtml(progress.reflection)}</p>` : ""}
+    ${includeActions ? `<div class="detail-actions"><button class="secondary-button" type="button" data-edit-progress="${escapeHtml(progress.id)}">编辑</button><button class="danger-button" type="button" data-delete-progress="${escapeHtml(progress.id)}">删除</button></div>` : ""}
+  `;
+}
+
+function startProgressEditing(progressId) {
+  const progress = progressRecords.find((item) => item.id === progressId);
+  if (!progress) {
+    return;
+  }
+
+  editingProgressId = progress.id;
+  progressFormPanel.setAttribute("aria-label", "编辑学习进度记录");
+  progressFormTitle.textContent = "编辑进度记录";
+  progressFormDescription.textContent = "修改时长、完成度、总结或关联信息；原始记录日期会保持不变。";
+  progressSubmitButton.textContent = "保存修改";
+  cancelProgressEditButton.classList.remove("hidden");
+  progressSaveMessage.textContent = "";
+  progressDate.textContent = progress.date;
+  updateProgressTopicOptions();
+  progressTopicSelect.value = progress.topicId;
+  updateProgressRelatedOptions(true, progress.resourceId || "", progress.planId || "");
+  document.querySelector("#progressDuration").value = progress.durationMinutes;
+  document.querySelector("#progressCompletion").value = progress.completionPercent;
+  document.querySelector("#progressReflection").value = progress.reflection;
+  progressFormPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelector("#progressDuration").focus();
+}
+
+function resetProgressForm() {
+  editingProgressId = "";
+  progressForm.reset();
+  progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
+  progressFormTitle.textContent = "新增进度记录";
+  progressFormDescription.textContent = "日期由系统自动记录为当天；先选择学习主题，资料和学习计划可以不选。";
+  progressSubmitButton.textContent = "保存进度";
+  cancelProgressEditButton.classList.add("hidden");
+  progressDate.textContent = getToday();
+  updateProgressTopicOptions();
+  updateProgressRelatedOptions();
+}
+
+function deleteProgress(progressId) {
+  const progress = progressRecords.find((item) => item.id === progressId);
+  if (!progress) {
+    return;
+  }
+
+  const confirmed = window.confirm(`确定要删除 ${progress.date} 的这条学习进度记录吗？删除后无法恢复。`);
+  if (!confirmed) {
+    return;
+  }
+
+  progressRecords = progressRecords.filter((item) => item.id !== progressId);
+  saveItems(PROGRESS_STORAGE_KEY, progressRecords);
+
+  if (editingProgressId === progressId) {
+    resetProgressForm();
+  }
+
+  progressSaveMessage.textContent = "进度记录已删除。";
+  render();
 }
 
 function openResourceForm(topicId = "", resourceId = "") {
@@ -1006,6 +1269,83 @@ function updateNoteRelatedOptions() {
   notePlanSelect.disabled = !topics.length;
 }
 
+function updateProgressTopicOptions() {
+  const currentValue = progressTopicSelect.value;
+  progressTopicSelect.innerHTML = "";
+
+  if (!topics.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "请先创建学习主题";
+    progressTopicSelect.appendChild(option);
+    progressTopicSelect.disabled = true;
+    progressResourceSelect.disabled = true;
+    progressPlanSelect.disabled = true;
+    return;
+  }
+
+  progressTopicSelect.disabled = false;
+  topics.forEach((topic) => {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    option.textContent = getTopicPath(topic);
+    progressTopicSelect.appendChild(option);
+  });
+
+  if (topics.some((topic) => topic.id === currentValue)) {
+    progressTopicSelect.value = currentValue;
+  }
+}
+
+function updateProgressRelatedOptions(preserveMissingAssociations = false, preservedResourceId = "", preservedPlanId = "") {
+  const topicId = progressTopicSelect.value;
+  const currentResourceId = preservedResourceId || progressResourceSelect.value;
+  const currentPlanId = preservedPlanId || progressPlanSelect.value;
+  const relatedResources = resources.filter((resource) => resource.topicId === topicId);
+  const relatedPlans = plans.filter((plan) => plan.topicId === topicId);
+
+  progressResourceSelect.innerHTML = '<option value="">不关联资料</option>';
+  relatedResources.forEach((resource) => {
+    const option = document.createElement("option");
+    option.value = resource.id;
+    option.textContent = resource.title;
+    progressResourceSelect.appendChild(option);
+  });
+
+  if (preserveMissingAssociations && currentResourceId && !resources.some((resource) => resource.id === currentResourceId)) {
+    const option = document.createElement("option");
+    option.value = currentResourceId;
+    option.textContent = "原关联资料已删除";
+    progressResourceSelect.appendChild(option);
+  }
+
+  progressPlanSelect.innerHTML = '<option value="">不关联学习计划</option>';
+  relatedPlans.forEach((plan) => {
+    const option = document.createElement("option");
+    option.value = plan.id;
+    option.textContent = plan.task;
+    progressPlanSelect.appendChild(option);
+  });
+
+  if (preserveMissingAssociations && currentPlanId && !plans.some((plan) => plan.id === currentPlanId)) {
+    const option = document.createElement("option");
+    option.value = currentPlanId;
+    option.textContent = "原关联学习计划已删除";
+    progressPlanSelect.appendChild(option);
+  }
+
+  if (relatedResources.some((resource) => resource.id === currentResourceId) || (preserveMissingAssociations && currentResourceId && !resources.some((resource) => resource.id === currentResourceId))) {
+    progressResourceSelect.value = currentResourceId;
+  }
+
+  if (relatedPlans.some((plan) => plan.id === currentPlanId) || (preserveMissingAssociations && currentPlanId && !plans.some((plan) => plan.id === currentPlanId))) {
+    progressPlanSelect.value = currentPlanId;
+  }
+
+  progressResourceSelect.disabled = !topics.length;
+  progressPlanSelect.disabled = !topics.length;
+}
+
 function groupByDirection(items) {
   return items.reduce((groups, topic) => {
     if (!groups[topic.direction]) {
@@ -1040,6 +1380,29 @@ function getPlanResourceLabel(plan, resource) {
   }
 
   return resource ? resource.title : "资料已删除";
+}
+
+function getSortedProgressRecords() {
+  return [...progressRecords].sort((first, second) => {
+    const dateDifference = second.date.localeCompare(first.date);
+    return dateDifference || new Date(second.updatedAt) - new Date(first.updatedAt);
+  });
+}
+
+function getTotalDuration(items) {
+  return items.reduce((total, item) => total + item.durationMinutes, 0);
+}
+
+function getCompletionStatus(completionPercent) {
+  if (completionPercent === 100) {
+    return { label: "已完成", className: "completed" };
+  }
+
+  if (completionPercent > 0) {
+    return { label: "进行中", className: "in-progress" };
+  }
+
+  return { label: "未完成", className: "not-started" };
 }
 
 function formatDateTime(value) {

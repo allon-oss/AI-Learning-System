@@ -192,6 +192,81 @@
         </section>
       </section>
 
+      <section class="page-header progress-header">
+        <div>
+          <p class="eyebrow">V1 第五个核心功能</p>
+          <h1>学习进度</h1>
+          <p class="intro">记录每次实际学习的时长、完成度和简短总结，留下可回看的学习轨迹。</p>
+        </div>
+      </section>
+
+      <section id="progressFormPanel" class="panel" aria-label="新增学习进度记录">
+        <div class="panel-heading">
+          <h2 id="progressFormTitle">新增进度记录</h2>
+          <p id="progressFormDescription">日期由系统自动记录为当天；先选择学习主题，资料和学习计划可以不选。</p>
+        </div>
+        <form id="progressForm" class="topic-form">
+          <label>
+            记录日期
+            <output id="progressDate" class="readonly-value"></output>
+          </label>
+
+          <label>
+            所属学习主题
+            <select id="progressTopic" name="topicId" required></select>
+          </label>
+
+          <label>
+            关联学习资料（可选）
+            <select id="progressResource" name="resourceId"></select>
+          </label>
+
+          <label>
+            关联学习计划（可选）
+            <select id="progressPlan" name="planId"></select>
+          </label>
+
+          <label>
+            实际学习时长（分钟）
+            <input id="progressDuration" name="durationMinutes" type="number" min="1" step="1" placeholder="例如：55" required />
+          </label>
+
+          <label>
+            本次完成度（0-100）
+            <input id="progressCompletion" name="completionPercent" type="number" min="0" max="100" step="1" placeholder="例如：80" required />
+          </label>
+
+          <label class="full-width">
+            简短总结（可选）
+            <textarea id="progressReflection" name="reflection" rows="4" maxlength="500" placeholder="例如：定位速度还不稳定，明天复盘错题。"></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button id="progressSubmitButton" class="primary-button" type="submit">保存进度</button>
+            <button id="cancelProgressEditButton" class="secondary-button hidden" type="button">取消编辑</button>
+          </div>
+          <p id="progressSaveMessage" class="form-message" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="layout progress-layout">
+        <section class="panel progress-overview-panel">
+          <div class="panel-heading">
+            <h2>学习概览</h2>
+            <p>基于已保存的学习进度记录统计。</p>
+          </div>
+          <div id="progressOverview" class="detail-grid compact-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>全部进度记录</h2>
+            <p id="progressSummary"></p>
+          </div>
+          <div id="progressList" class="plan-list"></div>
+        </section>
+      </section>
+
       <section class="page-header note-header">
         <div>
           <p class="eyebrow">V1 第四个核心功能</p>

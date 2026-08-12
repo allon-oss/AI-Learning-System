@@ -43,6 +43,10 @@ textarea {
   margin-top: 44px;
 }
 
+.progress-header {
+  margin-top: 44px;
+}
+
 .note-header {
   margin-top: 44px;
 }
@@ -159,6 +163,18 @@ textarea {
   background: white;
   padding: 11px 12px;
   color: #17211b;
+}
+
+.readonly-value {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  border: 1px solid #cfc8bc;
+  border-radius: 8px;
+  background: #f4f1e9;
+  padding: 11px 12px;
+  color: #405148;
+  font-weight: 400;
 }
 
 textarea {
@@ -362,6 +378,64 @@ textarea {
 .plan-card.completed h3 {
   color: #63746a;
   text-decoration: line-through;
+}
+
+.progress-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #e1dbcf;
+  border-radius: 8px;
+  background: white;
+  padding: 14px;
+}
+
+.progress-card-header,
+.progress-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.progress-card-header h3,
+.progress-card p {
+  margin-bottom: 0;
+}
+
+.progress-card p {
+  color: #405148;
+  line-height: 1.6;
+}
+
+.completion-pill {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.completion-pill.not-started {
+  background: #ece8df;
+  color: #657167;
+}
+
+.completion-pill.in-progress {
+  background: #f4e8c9;
+  color: #806018;
+}
+
+.completion-pill.completed {
+  background: #e0f1e7;
+  color: #216e4e;
+}
+
+.progress-layout {
+  grid-template-columns: minmax(260px, 0.62fr) minmax(0, 1.38fr);
+}
+
+.progress-overview-panel {
+  align-self: start;
 }
 
 .plan-card-main {
