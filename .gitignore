@@ -1,0 +1,24 @@
+# Sensitive local configuration and credentials
+.env
+.env.*
+*.key
+*.pem
+*.token
+*.secret
+
+# Git backups
+*.bundle
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+temp/
+tmp/
+
+# Node.js dependencies
+node_modules/
