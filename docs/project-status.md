@@ -242,10 +242,11 @@ V1 暂时不做：
 - 已完成本地 `master` 分支的首次 push
 - 当前 `master` 已追踪 `origin/master`
 - 历史提交的 Git Author 与 Committer 信息已统一为 `allon-oss`
+- 已完成 Git HTTP/HTTPS 代理配置，并验证可通过代理推送到 GitHub
 
 ### 当前状态
 
-项目本地仓库已与 GitHub Private 仓库建立连接，`master` 的提交历史已与远端 `origin/master` 同步；本次状态文档更新待后续提交后推送。
+项目本地仓库已与 GitHub Private 仓库建立连接，`master` 的提交历史已与远端 `origin/master` 同步。
 
 ### 下一阶段
 
