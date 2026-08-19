@@ -234,6 +234,23 @@ V1 暂时不做：
 - 自动计算资料总进度
 - 提醒和日程同步
 
+## GitHub 仓库与版本控制
+
+### 已完成
+
+- 已创建 AI-Learning-System GitHub Private 仓库
+- 已完成本地 `master` 分支的首次 push
+- 当前 `master` 已追踪 `origin/master`
+- 历史提交的 Git Author 与 Committer 信息已统一为 `allon-oss`
+
+### 当前状态
+
+项目本地仓库已与 GitHub Private 仓库建立连接，`master` 的提交历史已与远端 `origin/master` 同步；本次状态文档更新待后续提交后推送。
+
+### 下一阶段
+
+- 配置 GitHub MCP
+
 ## AI能力扩展
 
 ### 已完成
