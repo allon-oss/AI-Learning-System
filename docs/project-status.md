@@ -248,9 +248,17 @@ V1 暂时不做：
 
 项目本地仓库已与 GitHub Private 仓库建立连接，`master` 的提交历史已与远端 `origin/master` 同步。
 
+### GitHub MCP（第一阶段）
+
+- 已新增 Codex MCP 服务：`github_readonly`
+- 服务使用 GitHub 托管 MCP 远程端点：`https://api.githubcopilot.com/mcp/readonly`
+- 已启用服务端只读模式；仓库、Issue、Pull Request 等写入工具均不可用
+- 配置不保存 GitHub Personal Access Token，继续使用已完成的 GitHub Connector 授权
+- 本次仅完成本地 Codex 配置，不修改远端仓库内容，也不执行 push
+
 ### 下一阶段
 
-- 配置 GitHub MCP
+- 在新的 Codex 会话中确认 `github_readonly` 已加载，并进行一次只读查询验证
 
 ## AI能力扩展
 
@@ -266,5 +274,5 @@ Codex 已具备通过 MCP 读取指定 Notion 页面能力。
 
 ### 下一步
 
-- GitHub MCP 配置
+- 在新的 Codex 会话中验证 GitHub MCP 的只读查询
 - 探索 AI 工作流自动化
