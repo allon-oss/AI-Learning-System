@@ -150,7 +150,7 @@
       <section class="page-header plan-header">
         <div>
           <p class="eyebrow">V1 第三个核心功能</p>
-          <h1>今日学习计划</h1>
+          <h1>学习计划</h1>
           <p id="planDate" class="intro"></p>
         </div>
       </section>
@@ -158,8 +158,8 @@
       <section class="layout">
         <section class="panel">
           <div class="panel-heading">
-            <h2>新增今日任务</h2>
-            <p>选择一个学习主题，资料可以不选，然后写下今天要完成的小任务。</p>
+            <h2>新增学习计划</h2>
+            <p>选择一个学习主题，资料可以不选；计划日期只能选择今天或未来。</p>
           </div>
           <form id="planForm" class="topic-form">
             <label>
@@ -172,8 +172,27 @@
               <select id="planResource" name="resourceId"></select>
             </label>
 
+            <label>
+              计划日期
+              <input id="planScheduleDate" name="date" type="date" required />
+            </label>
+
+            <label>
+              预计时长（分钟，可选）
+              <input id="planEstimatedMinutes" name="estimatedMinutes" type="number" min="1" step="1" placeholder="例如：45" />
+            </label>
+
+            <label>
+              优先级
+              <select id="planPriority" name="priority" required>
+                <option value="高">高</option>
+                <option value="中" selected>中</option>
+                <option value="低">低</option>
+              </select>
+            </label>
+
             <label class="full-width">
-              今日学习任务
+              学习任务
               <textarea id="planTask" name="task" rows="3" placeholder="例如：看完 Transformer 入门视频前 20 分钟" required></textarea>
             </label>
 
@@ -185,7 +204,12 @@
 
         <section class="panel">
           <div class="panel-heading">
-            <h2>今天的任务</h2>
+            <h2 id="planListHeading">今天的任务</h2>
+            <div class="plan-view-tabs" role="tablist" aria-label="计划视图">
+              <button class="small-button" type="button" data-plan-view="today" role="tab">今天</button>
+              <button class="small-button" type="button" data-plan-view="future" role="tab">未来</button>
+              <button class="small-button" type="button" data-plan-view="history" role="tab">历史</button>
+            </div>
             <p id="planSummary"></p>
             <p id="planSaveMessage" class="form-message" role="status" aria-live="polite"></p>
           </div>

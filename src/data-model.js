@@ -157,6 +157,44 @@
     };
   }
 
+  function normalizePlans(plans) {
+    if (!Array.isArray(plans)) {
+      return [];
+    }
+
+    return plans.map((plan) => ({
+      ...plan,
+      priority: ["高", "中", "低"].includes(plan.priority) ? plan.priority : "中",
+      estimatedMinutes: Number.isInteger(plan.estimatedMinutes) && plan.estimatedMinutes > 0 ? plan.estimatedMinutes : null,
+    }));
+  }
+
+  function isValidPlanDate(date) {
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return false;
+    }
+
+    const [year, month, day] = date.split("-").map(Number);
+    const parsed = new Date(year, month - 1, day);
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  }
+
+  function classifyPlanDate(plan, today) {
+    if (!isValidPlanDate(plan?.date) || !isValidPlanDate(today)) {
+      return "history";
+    }
+
+    if (plan.date === today) {
+      return "today";
+    }
+
+    if (plan.date > today) {
+      return "future";
+    }
+
+    return plan.isCompleted ? "history" : "overdue";
+  }
+
   function getResourceTodayPlanSummary(plans, resourceId, today) {
     const relatedPlans = Array.isArray(plans)
       ? plans.filter((plan) => plan.resourceId === resourceId && plan.date === today)
@@ -174,6 +212,8 @@
     getNextTopicSortOrder,
     moveTopic,
     getTopicMoveAvailability,
+    normalizePlans,
+    classifyPlanDate,
     getResourceTodayPlanSummary,
   };
 

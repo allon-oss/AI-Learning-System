@@ -139,7 +139,7 @@ if (!window.LearningDataModel) {
 
 let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, defaultTopics));
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
-let plans = loadItems(PLAN_STORAGE_KEY, []);
+let plans = window.LearningDataModel.normalizePlans(loadItems(PLAN_STORAGE_KEY, []));
 /** @type {Note[]} */
 let notes = loadItems(NOTE_STORAGE_KEY, []);
 /** @type {ProgressRecord[]} */
@@ -151,6 +151,7 @@ let selectedNoteId = notes[0]?.id || "";
 let editingResourceId = "";
 let editingNoteId = "";
 let editingProgressId = "";
+let selectedPlanView = "today";
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -178,7 +179,12 @@ const planDate = document.querySelector("#planDate");
 const planForm = document.querySelector("#planForm");
 const planTopicSelect = document.querySelector("#planTopic");
 const planResourceSelect = document.querySelector("#planResource");
+const planScheduleDate = document.querySelector("#planScheduleDate");
+const planEstimatedMinutes = document.querySelector("#planEstimatedMinutes");
+const planPriority = document.querySelector("#planPriority");
 const planTaskInput = document.querySelector("#planTask");
+const planListHeading = document.querySelector("#planListHeading");
+const planViewTabs = document.querySelector(".plan-view-tabs");
 const planSummary = document.querySelector("#planSummary");
 const planSaveMessage = document.querySelector("#planSaveMessage");
 const planList = document.querySelector("#planList");
@@ -316,18 +322,34 @@ planForm.addEventListener("submit", (event) => {
   const formData = new FormData(planForm);
   const topicId = formData.get("topicId");
   const task = formData.get("task").trim();
+  const date = formData.get("date");
+  const estimatedMinutesInput = formData.get("estimatedMinutes").trim();
+  const estimatedMinutes = estimatedMinutesInput === "" ? null : Number(estimatedMinutesInput);
+  const priority = formData.get("priority");
 
   if (!topicId || !task) {
+    return;
+  }
+
+  if (!["today", "future"].includes(window.LearningDataModel.classifyPlanDate({ date, isCompleted: false }, getToday()))) {
+    planSaveMessage.textContent = "计划日期只能选择今天或未来日期。";
+    return;
+  }
+
+  if (estimatedMinutes !== null && (!Number.isInteger(estimatedMinutes) || estimatedMinutes <= 0)) {
+    planSaveMessage.textContent = "预计时长只能填写正整数分钟，或留空。";
     return;
   }
 
   const resourceId = formData.get("resourceId") || null;
   const plan = {
     id: `plan-${Date.now()}`,
-    date: getToday(),
+    date,
     topicId,
     resourceId,
     task,
+    priority: ["高", "中", "低"].includes(priority) ? priority : "中",
+    estimatedMinutes,
     isCompleted: false,
     createdAt: new Date().toISOString(),
   };
@@ -335,10 +357,12 @@ planForm.addEventListener("submit", (event) => {
   plans = [plan, ...plans];
   saveItems(PLAN_STORAGE_KEY, plans);
   planForm.reset();
+  setPlanDateDefaults();
   planTopicSelect.value = topicId;
   updatePlanResourceOptions();
+  selectedPlanView = date === getToday() ? "today" : "future";
   render();
-  planSaveMessage.textContent = "今日任务已添加并保存。";
+  planSaveMessage.textContent = "学习计划已添加并保存。";
 });
 
 noteForm.addEventListener("submit", (event) => {
@@ -499,6 +523,16 @@ planList.addEventListener("click", (event) => {
   if (deleteButton) {
     deletePlan(deleteButton.dataset.deletePlan);
   }
+});
+
+planViewTabs.addEventListener("click", (event) => {
+  const viewButton = event.target.closest("[data-plan-view]");
+  if (!viewButton) {
+    return;
+  }
+
+  selectedPlanView = viewButton.dataset.planView;
+  renderPlanList();
 });
 
 noteList.addEventListener("click", (event) => {
@@ -803,33 +837,51 @@ function renderResourceDetail() {
 }
 
 function renderPlanHeader() {
-  planDate.textContent = `今天是 ${getToday()}，只记录今天要完成的学习任务。`;
+  setPlanDateDefaults();
+  planDate.textContent = `今天是 ${getToday()}，可以安排今天或未来的学习计划。`;
 }
 
 function renderPlanList() {
-  const todayPlans = getTodayPlans();
-  const completedCount = todayPlans.filter((plan) => plan.isCompleted).length;
-  planSummary.textContent = `今天共有 ${todayPlans.length} 个任务，已完成 ${completedCount} 个。`;
+  const visiblePlans = getPlansForSelectedView();
+  const completedCount = visiblePlans.filter(({ plan }) => plan.isCompleted).length;
+  const viewDetails = {
+    today: { heading: "今天的任务", empty: "今天还没有学习计划，可以先添加一个小任务。" },
+    future: { heading: "未来计划", empty: "还没有未来的学习计划。" },
+    history: { heading: "历史计划", empty: "还没有可回看的历史计划。" },
+  };
+  const view = viewDetails[selectedPlanView];
+
+  planListHeading.textContent = view.heading;
+  planSummary.textContent = selectedPlanView === "today"
+    ? `今天共有 ${visiblePlans.length} 个任务，已完成 ${completedCount} 个。`
+    : `${view.heading}共有 ${visiblePlans.length} 个任务，已完成 ${completedCount} 个。`;
+  Array.from(planViewTabs.querySelectorAll("[data-plan-view]")).forEach((button) => {
+    const isSelected = button.dataset.planView === selectedPlanView;
+    button.classList.toggle("selected", isSelected);
+    button.setAttribute("aria-selected", String(isSelected));
+  });
   planList.innerHTML = "";
 
-  if (!todayPlans.length) {
-    planList.innerHTML = '<p class="empty-state">今天还没有学习计划，可以先添加一个小任务。</p>';
+  if (!visiblePlans.length) {
+    planList.innerHTML = `<p class="empty-state">${view.empty}</p>`;
     return;
   }
 
-  todayPlans.forEach((plan) => {
+  visiblePlans.forEach(({ plan, classification }) => {
     const topic = topics.find((item) => item.id === plan.topicId);
     const resource = resources.find((item) => item.id === plan.resourceId);
     const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.planId === plan.id);
     const article = document.createElement("article");
-    article.className = plan.isCompleted ? "plan-card completed" : "plan-card";
+    article.className = `plan-card${plan.isCompleted ? " completed" : ""}${classification === "overdue" ? " overdue" : ""}`;
 
     article.innerHTML = `
       <div class="plan-card-main">
         <span class="plan-check">${plan.isCompleted ? "✓" : "□"}</span>
         <div>
           <h3>${escapeHtml(plan.task)}</h3>
-          <p class="plan-status-text">今日任务状态：${plan.isCompleted ? "已完成" : "未完成"}</p>
+          <p class="plan-status-text">${getPlanStatusLabel(plan, classification)}</p>
+          <p>${getPlanDateLabel(plan, classification)}</p>
+          <p>优先级：${escapeHtml(plan.priority)}${plan.estimatedMinutes ? ` · 预计时长：${plan.estimatedMinutes} 分钟` : ""}</p>
           <p>主题：${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
           <p>资料：${escapeHtml(getPlanResourceLabel(plan, resource))}</p>
           <p>学习进度：${relatedProgressRecords.length ? `${relatedProgressRecords.length} 条，累计 ${getTotalDuration(relatedProgressRecords)} 分钟` : "暂无记录"}</p>
@@ -1424,9 +1476,87 @@ function getToday() {
   return `${year}-${month}-${day}`;
 }
 
+function setPlanDateDefaults() {
+  const today = getToday();
+  planScheduleDate.min = today;
+  if (!planScheduleDate.value) {
+    planScheduleDate.value = today;
+  }
+}
+
 function getTodayPlans() {
   const today = getToday();
   return plans.filter((plan) => plan.date === today);
+}
+
+function getPlansForSelectedView() {
+  const today = getToday();
+  const entries = plans.map((plan, index) => ({
+    plan,
+    index,
+    classification: window.LearningDataModel.classifyPlanDate(plan, today),
+  }));
+
+  if (selectedPlanView === "today") {
+    return entries.filter((entry) => entry.classification === "today");
+  }
+
+  if (selectedPlanView === "future") {
+    return entries
+      .filter((entry) => entry.classification === "future")
+      .sort((first, second) => first.plan.date.localeCompare(second.plan.date) || first.index - second.index);
+  }
+
+  return entries
+    .filter((entry) => ["overdue", "history"].includes(entry.classification))
+    .sort((first, second) => {
+      const firstHasValidDate = isValidPlanDateValue(first.plan.date);
+      const secondHasValidDate = isValidPlanDateValue(second.plan.date);
+
+      if (firstHasValidDate && secondHasValidDate) {
+        return second.plan.date.localeCompare(first.plan.date) || first.index - second.index;
+      }
+
+      if (firstHasValidDate !== secondHasValidDate) {
+        return firstHasValidDate ? -1 : 1;
+      }
+
+      return first.index - second.index;
+    });
+}
+
+function isValidPlanDateValue(date) {
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return false;
+  }
+
+  const [year, month, day] = date.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+}
+
+function getPlanStatusLabel(plan, classification) {
+  if (classification === "today") {
+    return `今日任务状态：${plan.isCompleted ? "已完成" : "未完成"}`;
+  }
+
+  if (classification === "overdue") {
+    return "计划状态：已逾期";
+  }
+
+  return `计划状态：${plan.isCompleted ? "已完成" : "未完成"}`;
+}
+
+function getPlanDateLabel(plan, classification) {
+  if (!isValidPlanDateValue(plan.date)) {
+    return `日期异常：${escapeHtml(typeof plan.date === "string" && plan.date ? plan.date : "未设置")}`;
+  }
+
+  if (classification === "overdue") {
+    return `原计划日期：${escapeHtml(plan.date)}（已逾期）`;
+  }
+
+  return `计划日期：${escapeHtml(plan.date)}`;
 }
 
 function getPlanResourceLabel(plan, resource) {

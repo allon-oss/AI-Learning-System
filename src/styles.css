@@ -406,6 +406,18 @@ textarea {
   gap: 12px;
 }
 
+.plan-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.plan-view-tabs .small-button.selected {
+  background: #216e4e;
+  color: white;
+}
+
 .plan-card {
   display: grid;
   gap: 12px;
@@ -417,6 +429,11 @@ textarea {
 
 .plan-card.completed {
   background: #f3fbf5;
+}
+
+.plan-card.overdue {
+  border-color: #c96a5c;
+  background: #fff7f3;
 }
 
 .plan-card.completed h3 {
