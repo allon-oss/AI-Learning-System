@@ -195,6 +195,18 @@
     return plan.isCompleted ? "history" : "overdue";
   }
 
+  function getEligiblePlansForProgress(plans, topicId, progressDate) {
+    if (!Array.isArray(plans) || !isValidPlanDate(progressDate)) {
+      return [];
+    }
+
+    return plans
+      .map((plan, index) => ({ plan, index }))
+      .filter(({ plan }) => plan.topicId === topicId && isValidPlanDate(plan.date) && plan.date <= progressDate)
+      .sort((first, second) => second.plan.date.localeCompare(first.plan.date) || first.index - second.index)
+      .map(({ plan }) => plan);
+  }
+
   function getResourceTodayPlanSummary(plans, resourceId, today) {
     const relatedPlans = Array.isArray(plans)
       ? plans.filter((plan) => plan.resourceId === resourceId && plan.date === today)
@@ -214,6 +226,7 @@
     getTopicMoveAvailability,
     normalizePlans,
     classifyPlanDate,
+    getEligiblePlansForProgress,
     getResourceTodayPlanSummary,
   };
 

@@ -162,3 +162,25 @@ test("无效旧日期计划归入历史而不是被丢弃", () => {
   assert.equal(model.classifyPlanDate({ date: "旧格式", isCompleted: false }, "2026-08-22"), "history");
   assert.equal(model.classifyPlanDate({}, "2026-08-22"), "history");
 });
+
+test("进度只能关联同主题且不晚于实际学习日期的有效计划，并按日期由近到远稳定排序", () => {
+  const plans = [
+    { id: "older", topicId: "topic-a", date: "2026-08-18", task: "较早任务" },
+    { id: "same-day-first", topicId: "topic-a", date: "2026-08-20", task: "当天第一个" },
+    { id: "future", topicId: "topic-a", date: "2026-08-21", task: "未来任务" },
+    { id: "other-topic", topicId: "topic-b", date: "2026-08-20", task: "其他主题" },
+    { id: "invalid-date", topicId: "topic-a", date: "2026-02-30", task: "异常日期" },
+    { id: "same-day-second", topicId: "topic-a", date: "2026-08-20", task: "当天第二个" },
+  ];
+
+  const eligible = model.getEligiblePlansForProgress(plans, "topic-a", "2026-08-20");
+
+  assert.deepEqual(eligible.map((plan) => plan.id), ["same-day-first", "same-day-second", "older"]);
+  assert.equal(eligible[0], plans[1]);
+  assert.deepEqual(plans.map((plan) => plan.id), ["older", "same-day-first", "future", "other-topic", "invalid-date", "same-day-second"]);
+});
+
+test("进度日期无效或计划输入不是数组时没有可关联计划", () => {
+  assert.deepEqual(model.getEligiblePlansForProgress([], "topic-a", "2026-02-30"), []);
+  assert.deepEqual(model.getEligiblePlansForProgress({}, "topic-a", "2026-08-20"), []);
+});

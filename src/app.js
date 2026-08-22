@@ -310,7 +310,13 @@ planTopicSelect.addEventListener("change", updatePlanResourceOptions);
 
 noteTopicSelect.addEventListener("change", updateNoteRelatedOptions);
 
-progressTopicSelect.addEventListener("change", updateProgressRelatedOptions);
+progressTopicSelect.addEventListener("change", () => {
+  updateProgressRelatedOptions(Boolean(editingProgressId));
+});
+
+progressDate.addEventListener("change", () => {
+  updateProgressRelatedOptions(Boolean(editingProgressId));
+});
 
 cancelNoteEditButton.addEventListener("click", resetNoteForm);
 
@@ -425,18 +431,36 @@ progressForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const formData = new FormData(progressForm);
+  const date = formData.get("date");
   const topicId = formData.get("topicId");
+  const resourceId = formData.get("resourceId") || null;
+  const planId = formData.get("planId") || null;
   const durationMinutes = Number(formData.get("durationMinutes"));
   const completionPercent = Number(formData.get("completionPercent"));
   const reflection = formData.get("reflection").trim();
+
+  if (!isValidPlanDateValue(date) || date > getToday()) {
+    progressSaveMessage.textContent = "进度日期只能选择今天或过去的有效日期。";
+    return;
+  }
 
   if (!topicId || !Number.isInteger(durationMinutes) || durationMinutes <= 0 || !Number.isInteger(completionPercent) || completionPercent < 0 || completionPercent > 100) {
     progressSaveMessage.textContent = "请填写有效的学习时长和完成度。";
     return;
   }
 
-  const now = new Date().toISOString();
   const isEditing = Boolean(editingProgressId);
+  const originalProgress = isEditing ? progressRecords.find((progress) => progress.id === editingProgressId) : null;
+  const selectedPlan = plans.find((plan) => plan.id === planId);
+  const eligiblePlans = window.LearningDataModel.getEligiblePlansForProgress(plans, topicId, date);
+  const preservesDeletedPlan = Boolean(planId && originalProgress && originalProgress.planId === planId && !selectedPlan);
+
+  if (planId && !preservesDeletedPlan && !eligiblePlans.some((plan) => plan.id === planId)) {
+    progressSaveMessage.textContent = "关联学习计划不属于当前主题，或其日期晚于记录日期。请清除关联或修改日期后再保存。";
+    return;
+  }
+
+  const now = new Date().toISOString();
   let savedProgressId = editingProgressId;
 
   if (isEditing) {
@@ -447,9 +471,10 @@ progressForm.addEventListener("submit", (event) => {
 
       return {
         ...progress,
+        date,
         topicId,
-        resourceId: formData.get("resourceId") || null,
-        planId: formData.get("planId") || null,
+        resourceId,
+        planId,
         durationMinutes,
         completionPercent,
         reflection,
@@ -459,10 +484,10 @@ progressForm.addEventListener("submit", (event) => {
   } else {
     const progress = {
       id: `progress-${Date.now()}`,
-      date: getToday(),
+      date,
       topicId,
-      resourceId: formData.get("resourceId") || null,
-      planId: formData.get("planId") || null,
+      resourceId,
+      planId,
       durationMinutes,
       completionPercent,
       reflection,
@@ -593,7 +618,7 @@ function saveItems(storageKey, items) {
 
 function render() {
   if (!editingProgressId) {
-    progressDate.textContent = getToday();
+    setProgressDateDefaults();
   }
   updateParentOptions();
   updateResourceTopicOptions();
@@ -1118,11 +1143,12 @@ function startProgressEditing(progressId) {
   editingProgressId = progress.id;
   progressFormPanel.setAttribute("aria-label", "编辑学习进度记录");
   progressFormTitle.textContent = "编辑进度记录";
-  progressFormDescription.textContent = "修改时长、完成度、总结或关联信息；原始记录日期会保持不变。";
+  progressFormDescription.textContent = "可修改今天或过去的记录日期、时长、完成度、总结或关联信息。";
   progressSubmitButton.textContent = "保存修改";
   cancelProgressEditButton.classList.remove("hidden");
   progressSaveMessage.textContent = "";
-  progressDate.textContent = progress.date;
+  progressDate.max = getToday();
+  progressDate.value = progress.date;
   updateProgressTopicOptions();
   progressTopicSelect.value = progress.topicId;
   updateProgressRelatedOptions(true, progress.resourceId || "", progress.planId || "");
@@ -1138,10 +1164,10 @@ function resetProgressForm() {
   progressForm.reset();
   progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
   progressFormTitle.textContent = "新增进度记录";
-  progressFormDescription.textContent = "日期由系统自动记录为当天；先选择学习主题，资料和学习计划可以不选。";
+  progressFormDescription.textContent = "可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。";
   progressSubmitButton.textContent = "保存进度";
   cancelProgressEditButton.classList.add("hidden");
-  progressDate.textContent = getToday();
+  setProgressDateDefaults();
   updateProgressTopicOptions();
   updateProgressRelatedOptions();
 }
@@ -1406,10 +1432,11 @@ function updateProgressTopicOptions() {
 
 function updateProgressRelatedOptions(preserveMissingAssociations = false, preservedResourceId = "", preservedPlanId = "") {
   const topicId = progressTopicSelect.value;
+  const progressDateValue = progressDate.value;
   const currentResourceId = preservedResourceId || progressResourceSelect.value;
   const currentPlanId = preservedPlanId || progressPlanSelect.value;
   const relatedResources = resources.filter((resource) => resource.topicId === topicId);
-  const relatedPlans = plans.filter((plan) => plan.topicId === topicId);
+  const eligiblePlans = window.LearningDataModel.getEligiblePlansForProgress(plans, topicId, progressDateValue);
 
   progressResourceSelect.innerHTML = '<option value="">不关联资料</option>';
   relatedResources.forEach((resource) => {
@@ -1427,25 +1454,34 @@ function updateProgressRelatedOptions(preserveMissingAssociations = false, prese
   }
 
   progressPlanSelect.innerHTML = '<option value="">不关联学习计划</option>';
-  relatedPlans.forEach((plan) => {
+  eligiblePlans.forEach((plan) => {
     const option = document.createElement("option");
     option.value = plan.id;
-    option.textContent = plan.task;
+    option.textContent = `${plan.date} · ${plan.task}`;
     progressPlanSelect.appendChild(option);
   });
 
-  if (preserveMissingAssociations && currentPlanId && !plans.some((plan) => plan.id === currentPlanId)) {
-    const option = document.createElement("option");
-    option.value = currentPlanId;
-    option.textContent = "原关联学习计划已删除";
-    progressPlanSelect.appendChild(option);
+  if (preserveMissingAssociations && currentPlanId) {
+    const currentPlan = plans.find((plan) => plan.id === currentPlanId);
+
+    if (!currentPlan) {
+      const option = document.createElement("option");
+      option.value = currentPlanId;
+      option.textContent = "原关联学习计划已删除";
+      progressPlanSelect.appendChild(option);
+    } else if (!eligiblePlans.some((plan) => plan.id === currentPlanId)) {
+      const option = document.createElement("option");
+      option.value = currentPlanId;
+      option.textContent = "原关联学习计划不符合当前主题或日期，请清除关联或修改日期";
+      progressPlanSelect.appendChild(option);
+    }
   }
 
   if (relatedResources.some((resource) => resource.id === currentResourceId) || (preserveMissingAssociations && currentResourceId && !resources.some((resource) => resource.id === currentResourceId))) {
     progressResourceSelect.value = currentResourceId;
   }
 
-  if (relatedPlans.some((plan) => plan.id === currentPlanId) || (preserveMissingAssociations && currentPlanId && !plans.some((plan) => plan.id === currentPlanId))) {
+  if (eligiblePlans.some((plan) => plan.id === currentPlanId) || (preserveMissingAssociations && currentPlanId)) {
     progressPlanSelect.value = currentPlanId;
   }
 
@@ -1481,6 +1517,14 @@ function setPlanDateDefaults() {
   planScheduleDate.min = today;
   if (!planScheduleDate.value) {
     planScheduleDate.value = today;
+  }
+}
+
+function setProgressDateDefaults() {
+  const today = getToday();
+  progressDate.max = today;
+  if (!progressDate.value) {
+    progressDate.value = today;
   }
 }
 

@@ -228,12 +228,12 @@
       <section id="progressFormPanel" class="panel" aria-label="新增学习进度记录">
         <div class="panel-heading">
           <h2 id="progressFormTitle">新增进度记录</h2>
-          <p id="progressFormDescription">日期由系统自动记录为当天；先选择学习主题，资料和学习计划可以不选。</p>
+          <p id="progressFormDescription">可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。</p>
         </div>
         <form id="progressForm" class="topic-form">
           <label>
             记录日期
-            <output id="progressDate" class="readonly-value"></output>
+            <input id="progressDate" name="date" type="date" required />
           </label>
 
           <label>
