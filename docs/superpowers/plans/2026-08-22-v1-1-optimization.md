@@ -23,6 +23,8 @@
 
 **P0 阶段执行说明（2026-08-22）：** 用户明确将第一阶段限定为“状态语义区分”和“主题稳定排序”。因此 Task 1 本阶段只建立这两项功能实际需要的主题兼容、排序和今日资料任务摘要测试；`normalizePlans`、`normalizeResources`、`validateBackup` 随对应 P1/P2 任务实现，不提前接入本分支。
 
+**P1 核心阶段执行说明（2026-08-22）：** 用户明确将本分支限定为按日期计划、今天/未来/历史回看、进度日期基础支持和计划与进度基础关联。因此本分支执行 Task 4 和下方收窄后的 Task 5；100% 进度后的显式计划完成选择、本地备份与安全恢复及全部 P2 功能均不在本分支实现。
+
 ---
 
 ## 文件结构规划
@@ -268,13 +270,13 @@ git commit -m "feat: add persistent topic ordering"
 
 **验收重点：** 今天计划默认仍选择当天；旧计划可见；未来计划不会混入今天；昨天未完成显示逾期；历史已完成任务可以回看。
 
-### Task 5：支持进度补录并定义计划联动规则
+### Task 5：支持进度补录与计划基础关联
 
-**修改范围：** 进度日期由只读输出改为可选择日期；关联计划达到 100% 时提示是否同步完成，拒绝同步也能保存进度；完成计划不自动修改资料整体状态。
+**修改范围：** 进度日期由只读输出改为可选择日期；计划关联项只显示同一主题下、计划日期不晚于实际学习日期的计划，并按日期由近到远排列。本阶段保存进度不会自动或选择性修改计划完成状态，也不会修改资料整体状态。
 
 **涉及已有模块：** 学习进度、今日计划、资料状态、主题/资料/计划关联选项。
 
-**开发风险：高。** 横跨三个状态系统，自动处理过多会产生错误数据。同步必须是显式选择，并保留取消路径。
+**开发风险：中到高。** 主要风险是日期变化后错误隐藏已有计划关联，或在编辑旧记录时静默清除 `planId`。关联校验必须显式反馈，并保留编辑记录原有的缺失关联显示。
 
 **Files:**
 - Modify: `index.html`
@@ -285,17 +287,17 @@ git commit -m "feat: add persistent topic ordering"
 - Test: `tests/manual-v1.1-regression.md`
 
 **Interfaces:**
-- Produces: `shouldOfferPlanCompletion(progress, plan)`。
-- Rule: 仅当 `progress.planId` 存在、`completionPercent === 100` 且计划未完成时返回 `true`。
+- Produces: `getEligiblePlansForProgress(plans, topicId, progressDate)`。
+- Rule: 只返回 `plan.topicId === topicId` 且 `plan.date <= progressDate` 的计划，并按计划日期从近到远稳定排序。
 
-- [ ] **Step 1: 写 100%、80%、无关联计划三种失败测试**
+- [ ] **Step 1: 写进度日期和可关联计划范围失败测试**
 - [ ] **Step 2: 运行 `npm test` 确认失败**
-- [ ] **Step 3: 实现联动判断纯函数**
+- [ ] **Step 3: 实现计划关联筛选和稳定排序纯函数**
 - [ ] **Step 4: 将进度日期改为可编辑日期输入，并在编辑旧记录时保持原日期**
-- [ ] **Step 5: 保存 100% 进度后提供“同时完成计划/仅保存进度”选择**
-- [ ] **Step 6: 在已完成但无进度的计划卡上显示“尚未记录实际学习”提示**
-- [ ] **Step 7: 验证资料整体状态在所有联动路径中均不变化**
-- [ ] **Step 8: 提交 `feat: support progress backfill and explicit plan sync`**
+- [ ] **Step 5: 根据主题和实际学习日期更新计划关联项，并在提交时校验关联有效性**
+- [ ] **Step 6: 编辑旧进度时保留原日期和仍有效的 `planId`，对已删除关联继续显示原有缺失提示**
+- [ ] **Step 7: 验证保存 100% 进度也不会自动修改计划或资料状态**
+- [ ] **Step 8: 提交 `feat: support progress backfill and plan association`**
 
 ### Task 6：增加本地备份导出与安全恢复
 
