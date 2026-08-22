@@ -133,14 +133,19 @@ const defaultResources = [
   },
 ];
 
-let topics = loadItems(TOPIC_STORAGE_KEY, defaultTopics);
+if (!window.LearningDataModel) {
+  throw new Error("学习数据模块加载失败，请刷新页面后重试。");
+}
+
+let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, defaultTopics));
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
 let plans = loadItems(PLAN_STORAGE_KEY, []);
 /** @type {Note[]} */
 let notes = loadItems(NOTE_STORAGE_KEY, []);
 /** @type {ProgressRecord[]} */
 let progressRecords = loadItems(PROGRESS_STORAGE_KEY, []);
-let selectedTopicId = topics[0]?.id || "";
+
+let selectedTopicId = window.LearningDataModel.getOrderedTopics(topics)[0]?.id || "";
 let selectedResourceId = resources[0]?.id || "";
 let selectedNoteId = notes[0]?.id || "";
 let editingResourceId = "";
@@ -175,6 +180,7 @@ const planTopicSelect = document.querySelector("#planTopic");
 const planResourceSelect = document.querySelector("#planResource");
 const planTaskInput = document.querySelector("#planTask");
 const planSummary = document.querySelector("#planSummary");
+const planSaveMessage = document.querySelector("#planSaveMessage");
 const planList = document.querySelector("#planList");
 
 const noteForm = document.querySelector("#noteForm");
@@ -231,11 +237,12 @@ topicForm.addEventListener("submit", (event) => {
     parentId: formData.get("parentId"),
     description: formData.get("description").trim(),
     status: formData.get("status"),
+    sortOrder: window.LearningDataModel.getNextTopicSortOrder(topics, formData.get("direction"), formData.get("parentId")),
     createdAt: now,
     updatedAt: now,
   };
 
-  topics = [topic, ...topics];
+  topics = window.LearningDataModel.normalizeTopics([...topics, topic]);
   selectedTopicId = topic.id;
   saveItems(TOPIC_STORAGE_KEY, topics);
   topicForm.reset();
@@ -331,6 +338,7 @@ planForm.addEventListener("submit", (event) => {
   planTopicSelect.value = topicId;
   updatePlanResourceOptions();
   render();
+  planSaveMessage.textContent = "今日任务已添加并保存。";
 });
 
 noteForm.addEventListener("submit", (event) => {
@@ -582,7 +590,7 @@ function renderTopicSummary() {
 }
 
 function renderTopicList() {
-  const groupedTopics = groupByDirection(topics);
+  const groupedTopics = groupByDirection(window.LearningDataModel.getOrderedTopics(topics));
   topicList.innerHTML = "";
 
   Object.entries(groupedTopics).forEach(([direction, directionTopics]) => {
@@ -594,22 +602,51 @@ function renderTopicList() {
     group.appendChild(heading);
 
     directionTopics.forEach((topic) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = topic.id === selectedTopicId ? "topic-card selected" : "topic-card";
-      button.addEventListener("click", () => {
+      const article = document.createElement("article");
+      article.className = topic.id === selectedTopicId ? "topic-card topic-card-with-actions selected" : "topic-card topic-card-with-actions";
+
+      const selectButton = document.createElement("button");
+      selectButton.type = "button";
+      selectButton.className = "topic-card-select";
+      selectButton.dataset.selectTopic = topic.id;
+      selectButton.setAttribute("aria-pressed", topic.id === selectedTopicId ? "true" : "false");
+      selectButton.addEventListener("click", () => {
         selectedTopicId = topic.id;
         renderTopicList();
         renderTopicDetail();
       });
 
       const parent = topics.find((item) => item.id === topic.parentId);
-      button.innerHTML = `
+      selectButton.innerHTML = `
         <span class="topic-card-title">${escapeHtml(topic.name)}</span>
         <span class="topic-card-meta">${escapeHtml(parent ? parent.name : topic.direction)} · ${escapeHtml(topic.status)}</span>
         <span class="topic-card-description">${escapeHtml(topic.description || "暂时没有描述。")}</span>
       `;
-      group.appendChild(button);
+
+      const moveAvailability = window.LearningDataModel.getTopicMoveAvailability(topics, topic.id);
+      const actions = document.createElement("div");
+      actions.className = "topic-order-actions";
+      actions.innerHTML = `
+        <button class="small-button" type="button" data-move-topic="${escapeHtml(topic.id)}" data-move-direction="-1" aria-label="上移 ${escapeHtml(topic.name)}" ${moveAvailability.canMoveUp ? "" : "disabled"}>上移</button>
+        <button class="small-button" type="button" data-move-topic="${escapeHtml(topic.id)}" data-move-direction="1" aria-label="下移 ${escapeHtml(topic.name)}" ${moveAvailability.canMoveDown ? "" : "disabled"}>下移</button>
+      `;
+
+      actions.querySelectorAll("[data-move-topic]").forEach((moveButton) => {
+        moveButton.addEventListener("click", () => {
+          const movedTopicId = moveButton.dataset.moveTopic;
+          topics = window.LearningDataModel.moveTopic(topics, movedTopicId, Number(moveButton.dataset.moveDirection));
+          saveItems(TOPIC_STORAGE_KEY, topics);
+          render();
+          const movedTopicSelectButton = Array.from(topicList.querySelectorAll("[data-select-topic]")).find(
+            (button) => button.dataset.selectTopic === movedTopicId,
+          );
+          movedTopicSelectButton?.focus();
+        });
+      });
+
+      article.appendChild(selectButton);
+      article.appendChild(actions);
+      group.appendChild(article);
     });
 
     topicList.appendChild(group);
@@ -624,7 +661,7 @@ function renderTopicDetail() {
   }
 
   const parent = topics.find((item) => item.id === topic.parentId);
-  const children = topics.filter((item) => item.parentId === topic.id);
+  const children = window.LearningDataModel.getOrderedTopics(topics.filter((item) => item.parentId === topic.id));
   const relatedResources = resources.filter((resource) => resource.topicId === topic.id);
   const relatedTodayPlans = getTodayPlans().filter((plan) => plan.topicId === topic.id);
   const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.topicId === topic.id);
@@ -685,7 +722,7 @@ function renderRelatedResources(relatedResources) {
           (resource) => `
             <button class="mini-card" type="button" data-view-resource="${escapeHtml(resource.id)}">
               <span>${escapeHtml(resource.title)}</span>
-              <small>${escapeHtml(resource.type)} · ${escapeHtml(resource.status)}</small>
+              <small>${escapeHtml(resource.type)} · 资料整体状态：${escapeHtml(resource.status)}</small>
             </button>
           `,
         )
@@ -715,7 +752,7 @@ function renderResourceList() {
 
     button.innerHTML = `
       <span class="topic-card-title">${escapeHtml(resource.title)}</span>
-      <span class="topic-card-meta">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")} · ${escapeHtml(resource.type)} · ${escapeHtml(resource.status)}</span>
+      <span class="topic-card-meta">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")} · ${escapeHtml(resource.type)} · 资料整体状态：${escapeHtml(resource.status)}</span>
       <span class="topic-card-description">这份资料用于支持对应学习主题。</span>
     `;
     resourceList.appendChild(button);
@@ -731,11 +768,15 @@ function renderResourceDetail() {
 
   const topic = topics.find((item) => item.id === resource.topicId);
   const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.resourceId === resource.id);
+  const todayPlanSummary = window.LearningDataModel.getResourceTodayPlanSummary(plans, resource.id, getToday());
   resourceDetail.innerHTML = `
     <div class="panel-heading">
       <p class="eyebrow">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
       <h2>${escapeHtml(resource.title)}</h2>
-      <span class="status-pill">${escapeHtml(resource.status)}</span>
+      <div class="status-context">
+        <span>资料整体状态</span>
+        <span class="status-pill">${escapeHtml(resource.status)}</span>
+      </div>
     </div>
     <div class="detail-actions">
       <button class="secondary-button" type="button" data-edit-resource="${escapeHtml(resource.id)}">编辑资料</button>
@@ -748,6 +789,10 @@ function renderResourceDetail() {
     <div class="detail-section">
       <h3>资料类型</h3>
       <p>${escapeHtml(resource.type)}</p>
+    </div>
+    <div class="detail-section">
+      <h3>今日关联任务状态</h3>
+      <p>${todayPlanSummary.total ? `已完成 ${todayPlanSummary.completed}/${todayPlanSummary.total}` : "今天没有关联这份资料的任务。"}</p>
     </div>
     <div class="detail-section">
       <h3>学习进度</h3>
@@ -784,6 +829,7 @@ function renderPlanList() {
         <span class="plan-check">${plan.isCompleted ? "✓" : "□"}</span>
         <div>
           <h3>${escapeHtml(plan.task)}</h3>
+          <p class="plan-status-text">今日任务状态：${plan.isCompleted ? "已完成" : "未完成"}</p>
           <p>主题：${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
           <p>资料：${escapeHtml(getPlanResourceLabel(plan, resource))}</p>
           <p>学习进度：${relatedProgressRecords.length ? `${relatedProgressRecords.length} 条，累计 ${getTotalDuration(relatedProgressRecords)} 分钟` : "暂无记录"}</p>
@@ -1126,9 +1172,16 @@ function deleteResource(resourceId) {
 }
 
 function togglePlanCompleted(planId) {
-  plans = plans.map((plan) => (plan.id === planId ? { ...plan, isCompleted: !plan.isCompleted } : plan));
+  const selectedPlan = plans.find((plan) => plan.id === planId);
+  if (!selectedPlan) {
+    return;
+  }
+
+  const isCompleted = !selectedPlan.isCompleted;
+  plans = plans.map((plan) => (plan.id === planId ? { ...plan, isCompleted } : plan));
   saveItems(PLAN_STORAGE_KEY, plans);
   render();
+  planSaveMessage.textContent = isCompleted ? "今日任务已完成并保存。" : "已取消今日任务的完成状态。";
 }
 
 function deletePlan(planId) {
@@ -1149,7 +1202,9 @@ function deletePlan(planId) {
 
 function updateParentOptions() {
   const direction = directionSelect.value;
-  const parentOptions = topics.filter((topic) => topic.direction === direction);
+  const parentOptions = window.LearningDataModel
+    .getOrderedTopics(topics)
+    .filter((topic) => topic.direction === direction);
   parentSelect.innerHTML = '<option value="">无</option>';
 
   parentOptions.forEach((topic) => {
@@ -1163,7 +1218,7 @@ function updateParentOptions() {
 function updateResourceTopicOptions() {
   resourceTopicSelect.innerHTML = "";
 
-  topics.forEach((topic) => {
+  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
@@ -1189,7 +1244,7 @@ function updatePlanTopicOptions() {
   planTopicSelect.disabled = false;
   planTaskInput.disabled = false;
 
-  topics.forEach((topic) => {
+  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
@@ -1232,7 +1287,7 @@ function updateNoteTopicOptions() {
   }
 
   noteTopicSelect.disabled = false;
-  topics.forEach((topic) => {
+  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
@@ -1285,7 +1340,7 @@ function updateProgressTopicOptions() {
   }
 
   progressTopicSelect.disabled = false;
-  topics.forEach((topic) => {
+  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);

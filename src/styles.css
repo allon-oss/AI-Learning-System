@@ -116,6 +116,11 @@ h3 {
   font-size: 14px;
 }
 
+.small-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .danger-button {
   background: #f2d8d5;
   color: #8a2f25;
@@ -198,6 +203,10 @@ textarea {
   line-height: 1.5;
 }
 
+.panel-heading .form-message {
+  color: #216e4e;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -249,6 +258,31 @@ textarea {
   line-height: 1.6;
 }
 
+.topic-card-with-actions {
+  overflow: hidden;
+  padding: 0;
+  cursor: default;
+}
+
+.topic-card-select {
+  display: grid;
+  width: 100%;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.topic-order-actions {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid #e6e0d6;
+  padding: 10px 14px;
+}
+
 .topic-detail {
   align-self: start;
   position: sticky;
@@ -261,6 +295,16 @@ textarea {
   background: #e0f1e7;
   padding: 6px 10px;
   color: #216e4e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.status-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #4f5f55;
   font-size: 14px;
   font-weight: 700;
 }
@@ -454,6 +498,12 @@ textarea {
   margin-bottom: 0;
   color: #607066;
   line-height: 1.6;
+}
+
+.plan-card .plan-status-text {
+  margin-bottom: 6px;
+  color: #27332c;
+  font-weight: 700;
 }
 
 .plan-check {

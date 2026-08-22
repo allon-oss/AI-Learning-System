@@ -119,7 +119,7 @@
           </label>
 
           <label>
-            学习状态
+            资料整体状态
             <select id="resourceStatus" name="status" required>
               <option value="未开始">未开始</option>
               <option value="学习中">学习中</option>
@@ -187,6 +187,7 @@
           <div class="panel-heading">
             <h2>今天的任务</h2>
             <p id="planSummary"></p>
+            <p id="planSaveMessage" class="form-message" role="status" aria-live="polite"></p>
           </div>
           <div id="planList" class="plan-list"></div>
         </section>
@@ -327,6 +328,7 @@
       </section>
     </main>
 
+    <script src="src/data-model.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>
