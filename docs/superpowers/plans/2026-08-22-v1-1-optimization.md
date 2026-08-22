@@ -187,7 +187,7 @@ git commit -m "feat: clarify resource and daily task status"
 - Modify: `src/app.js`
 - Modify: `src/styles.css`
 - Test: `tests/data-model.test.cjs`
-- Test: `tests/manual-v1.1-regression.md`
+- Create/Test: `tests/manual-v1.1-p1-regression.md`
 
 **Interfaces:**
 - Consumes: `normalizeTopics(topics)`。
@@ -252,8 +252,9 @@ git commit -m "feat: add persistent topic ordering"
 - Modify: `src/data-model.js`
 - Modify: `src/app.js`
 - Modify: `src/styles.css`
+- Modify: `docs/project-status.md`
 - Test: `tests/data-model.test.cjs`
-- Test: `tests/manual-v1.1-regression.md`
+- Create/Test: `tests/manual-v1.1-p1-regression.md`
 
 **Interfaces:**
 - Produces plan fields: `date: string`、`priority: "高" | "中" | "低"`、`estimatedMinutes: number | null`。
@@ -297,7 +298,8 @@ git commit -m "feat: add persistent topic ordering"
 - [ ] **Step 5: 根据主题和实际学习日期更新计划关联项，并在提交时校验关联有效性**
 - [ ] **Step 6: 编辑旧进度时保留原日期和仍有效的 `planId`，对已删除关联继续显示原有缺失提示**
 - [ ] **Step 7: 验证保存 100% 进度也不会自动修改计划或资料状态**
-- [ ] **Step 8: 提交 `feat: support progress backfill and plan association`**
+- [ ] **Step 8: 完成 P1 页面回归记录并更新 `docs/project-status.md`**
+- [ ] **Step 9: 提交 `feat: support progress backfill and plan association`**
 
 ### Task 6：增加本地备份导出与安全恢复
 
