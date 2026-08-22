@@ -285,7 +285,7 @@ git commit -m "feat: add persistent topic ordering"
 - Modify: `src/app.js`
 - Modify: `src/styles.css`
 - Test: `tests/data-model.test.cjs`
-- Test: `tests/manual-v1.1-regression.md`
+- Test: `tests/manual-v1.1-p1-regression.md`
 
 **Interfaces:**
 - Produces: `getEligiblePlansForProgress(plans, topicId, progressDate)`。

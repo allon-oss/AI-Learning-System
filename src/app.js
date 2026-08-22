@@ -627,7 +627,7 @@ function render() {
   updateNoteTopicOptions();
   updateNoteRelatedOptions();
   updateProgressTopicOptions();
-  updateProgressRelatedOptions();
+  updateProgressRelatedOptions(Boolean(editingProgressId));
   renderTopicSummary();
   renderTopicList();
   renderTopicDetail();
@@ -1256,10 +1256,11 @@ function togglePlanCompleted(planId) {
   }
 
   const isCompleted = !selectedPlan.isCompleted;
+  const planLabel = selectedPlanView === "today" ? "今日任务" : "学习计划";
   plans = plans.map((plan) => (plan.id === planId ? { ...plan, isCompleted } : plan));
   saveItems(PLAN_STORAGE_KEY, plans);
   render();
-  planSaveMessage.textContent = isCompleted ? "今日任务已完成并保存。" : "已取消今日任务的完成状态。";
+  planSaveMessage.textContent = isCompleted ? `${planLabel}已完成并保存。` : `已取消${planLabel}的完成状态。`;
 }
 
 function deletePlan(planId) {
