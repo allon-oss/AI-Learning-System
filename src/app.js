@@ -323,6 +323,13 @@ resourceForm.addEventListener("submit", (event) => {
 
   const formData = new FormData(resourceForm);
   const now = getToday();
+  const originalResource = editingResourceId ? resources.find((resource) => resource.id === editingResourceId) : null;
+  const topicId = preserveLockedTopicAssociation(originalResource, formData.get("topicId"));
+
+  if (!topicId || (!originalResource && !isActiveTopicId(topicId))) {
+    window.alert("所选主题已归档或不存在。请先创建或恢复主题后再新增资料。");
+    return;
+  }
 
   if (editingResourceId) {
     resources = resources.map((resource) => {
@@ -333,7 +340,7 @@ resourceForm.addEventListener("submit", (event) => {
       return {
         ...resource,
         title: formData.get("title").trim(),
-        topicId: formData.get("topicId"),
+        topicId,
         type: formData.get("type"),
         status: formData.get("status"),
         updatedAt: now,
@@ -344,7 +351,7 @@ resourceForm.addEventListener("submit", (event) => {
     const resource = {
       id: `resource-${Date.now()}`,
       title: formData.get("title").trim(),
-      topicId: formData.get("topicId"),
+      topicId,
       type: formData.get("type"),
       status: formData.get("status"),
       createdAt: now,
@@ -391,6 +398,11 @@ planForm.addEventListener("submit", (event) => {
     return;
   }
 
+  if (!isActiveTopicId(topicId)) {
+    planSaveMessage.textContent = "所选主题已归档或不存在。请先创建或恢复主题后再新增计划。";
+    return;
+  }
+
   if (!["today", "future"].includes(window.LearningDataModel.classifyPlanDate({ date, isCompleted: false }, getToday()))) {
     planSaveMessage.textContent = "计划日期只能选择今天或未来日期。";
     return;
@@ -431,9 +443,15 @@ noteForm.addEventListener("submit", (event) => {
   const formData = new FormData(noteForm);
   const title = formData.get("title").trim();
   const content = formData.get("content").trim();
-  const topicId = formData.get("topicId");
+  const originalNote = editingNoteId ? notes.find((note) => note.id === editingNoteId) : null;
+  const topicId = preserveLockedTopicAssociation(originalNote, formData.get("topicId"));
 
   if (!title || !content || !topicId) {
+    return;
+  }
+
+  if (!originalNote && !isActiveTopicId(topicId)) {
+    noteSaveMessage.textContent = "所选主题已归档或不存在。请先创建或恢复主题后再新增笔记。";
     return;
   }
 
@@ -486,7 +504,9 @@ progressForm.addEventListener("submit", (event) => {
 
   const formData = new FormData(progressForm);
   const date = formData.get("date");
-  const topicId = formData.get("topicId");
+  const isEditing = Boolean(editingProgressId);
+  const originalProgress = isEditing ? progressRecords.find((progress) => progress.id === editingProgressId) : null;
+  const topicId = preserveLockedTopicAssociation(originalProgress, formData.get("topicId"));
   const resourceId = formData.get("resourceId") || null;
   const planId = formData.get("planId") || null;
   const durationMinutes = Number(formData.get("durationMinutes"));
@@ -503,8 +523,11 @@ progressForm.addEventListener("submit", (event) => {
     return;
   }
 
-  const isEditing = Boolean(editingProgressId);
-  const originalProgress = isEditing ? progressRecords.find((progress) => progress.id === editingProgressId) : null;
+  if (!originalProgress && !isActiveTopicId(topicId)) {
+    progressSaveMessage.textContent = "所选主题已归档或不存在。请先创建或恢复主题后再新增进度。";
+    return;
+  }
+
   const selectedPlan = plans.find((plan) => plan.id === planId);
   const eligiblePlans = window.LearningDataModel.getEligiblePlansForProgress(plans, topicId, date);
   const preservesDeletedPlan = Boolean(planId && originalProgress && originalProgress.planId === planId && !selectedPlan);
@@ -945,7 +968,6 @@ function renderResourceList() {
   resourceList.innerHTML = "";
 
   resources.forEach((resource) => {
-    const topic = topics.find((item) => item.id === resource.topicId);
     const button = document.createElement("button");
     button.type = "button";
     button.className = resource.id === selectedResourceId ? "topic-card selected" : "topic-card";
@@ -957,7 +979,7 @@ function renderResourceList() {
 
     button.innerHTML = `
       <span class="topic-card-title">${escapeHtml(resource.title)}</span>
-      <span class="topic-card-meta">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")} · ${escapeHtml(resource.type)} · 资料整体状态：${escapeHtml(resource.status)}</span>
+      <span class="topic-card-meta">${escapeHtml(getTopicAssociationLabel(resource.topicId, "未找到主题"))} · ${escapeHtml(resource.type)} · 资料整体状态：${escapeHtml(resource.status)}</span>
       <span class="topic-card-description">这份资料用于支持对应学习主题。</span>
     `;
     resourceList.appendChild(button);
@@ -971,12 +993,12 @@ function renderResourceDetail() {
     return;
   }
 
-  const topic = topics.find((item) => item.id === resource.topicId);
+  const topicLabel = getTopicAssociationLabel(resource.topicId, "未找到主题");
   const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.resourceId === resource.id);
   const todayPlanSummary = window.LearningDataModel.getResourceTodayPlanSummary(plans, resource.id, getToday());
   resourceDetail.innerHTML = `
     <div class="panel-heading">
-      <p class="eyebrow">${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
+      <p class="eyebrow">${escapeHtml(topicLabel)}</p>
       <h2>${escapeHtml(resource.title)}</h2>
       <div class="status-context">
         <span>资料整体状态</span>
@@ -989,7 +1011,7 @@ function renderResourceDetail() {
     </div>
     <div class="detail-section">
       <h3>所属学习主题</h3>
-      <p>${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
+      <p>${escapeHtml(topicLabel)}</p>
     </div>
     <div class="detail-section">
       <h3>资料类型</h3>
@@ -1039,7 +1061,6 @@ function renderPlanList() {
   }
 
   visiblePlans.forEach(({ plan, classification }) => {
-    const topic = topics.find((item) => item.id === plan.topicId);
     const resource = resources.find((item) => item.id === plan.resourceId);
     const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.planId === plan.id);
     const article = document.createElement("article");
@@ -1053,7 +1074,7 @@ function renderPlanList() {
           <p class="plan-status-text">${getPlanStatusLabel(plan, classification)}</p>
           <p>${getPlanDateLabel(plan, classification)}</p>
           <p>优先级：${escapeHtml(plan.priority)}${plan.estimatedMinutes ? ` · 预计时长：${plan.estimatedMinutes} 分钟` : ""}</p>
-          <p>主题：${escapeHtml(topic ? getTopicPath(topic) : "未找到主题")}</p>
+          <p>主题：${escapeHtml(getTopicAssociationLabel(plan.topicId, "未找到主题"))}</p>
           <p>资料：${escapeHtml(getPlanResourceLabel(plan, resource))}</p>
           <p>学习进度：${relatedProgressRecords.length ? `${relatedProgressRecords.length} 条，累计 ${getTotalDuration(relatedProgressRecords)} 分钟` : "暂无记录"}</p>
         </div>
@@ -1082,14 +1103,13 @@ function renderNoteList() {
   }
 
   sortedNotes.forEach((note) => {
-    const topic = topics.find((item) => item.id === note.topicId);
     const button = document.createElement("button");
     button.className = note.id === selectedNoteId ? "topic-card selected" : "topic-card";
     button.type = "button";
     button.dataset.viewNote = note.id;
     button.innerHTML = `
       <span class="topic-card-title">${escapeHtml(note.title)}</span>
-      <span class="topic-card-meta">${escapeHtml(topic ? getTopicPath(topic) : "所属主题已删除")}</span>
+      <span class="topic-card-meta">${escapeHtml(getTopicAssociationLabel(note.topicId, "所属主题已删除"))}</span>
       <span class="topic-card-meta">更新于 ${escapeHtml(formatDateTime(note.updatedAt))}</span>
     `;
     noteList.appendChild(button);
@@ -1103,7 +1123,6 @@ function renderNoteDetail() {
     return;
   }
 
-  const topic = topics.find((item) => item.id === note.topicId);
   const resource = resources.find((item) => item.id === note.resourceId);
   const plan = plans.find((item) => item.id === note.planId);
   const resourceLabel = note.resourceId ? (resource ? resource.title : "关联资料已删除") : "未关联资料";
@@ -1111,7 +1130,7 @@ function renderNoteDetail() {
 
   noteDetail.innerHTML = `
     <div class="panel-heading">
-      <p class="eyebrow">${escapeHtml(topic ? getTopicPath(topic) : "所属主题已删除")}</p>
+      <p class="eyebrow">${escapeHtml(getTopicAssociationLabel(note.topicId, "所属主题已删除"))}</p>
       <h2>${escapeHtml(note.title)}</h2>
     </div>
     <div class="detail-actions">
@@ -1124,7 +1143,7 @@ function renderNoteDetail() {
     </div>
     <div class="detail-section">
       <h3>所属学习主题</h3>
-      <p>${escapeHtml(topic ? getTopicPath(topic) : "所属主题已删除")}</p>
+      <p>${escapeHtml(getTopicAssociationLabel(note.topicId, "所属主题已删除"))}</p>
     </div>
     <div class="detail-section">
       <h3>关联学习资料</h3>
@@ -1156,7 +1175,11 @@ function startNoteEditing(noteId) {
   cancelNoteEditButton.classList.remove("hidden");
   noteSaveMessage.textContent = "";
   updateNoteTopicOptions();
-  noteTopicSelect.value = note.topicId;
+  if (isTopicAssociationLocked(note)) {
+    setLockedTopicSelect(noteTopicSelect, note.topicId, "所属主题已删除");
+  } else {
+    noteTopicSelect.value = note.topicId;
+  }
   updateNoteRelatedOptions();
   noteResourceSelect.value = note.resourceId || "";
   notePlanSelect.value = note.planId || "";
@@ -1258,7 +1281,6 @@ function renderRecentProgressRecords(progressRecordsToRender, emptyMessage) {
 }
 
 function renderProgressRecordCard(progress, includeActions = false) {
-  const topic = topics.find((item) => item.id === progress.topicId);
   const resource = resources.find((item) => item.id === progress.resourceId);
   const plan = plans.find((item) => item.id === progress.planId);
   const resourceLabel = progress.resourceId ? (resource ? resource.title : "原关联资料已删除") : "未关联资料";
@@ -1267,7 +1289,7 @@ function renderProgressRecordCard(progress, includeActions = false) {
 
   return `
     <div class="progress-card-header">
-      <h3>${escapeHtml(progress.date)} · ${escapeHtml(topic ? topic.name : "原关联主题已删除")}</h3>
+      <h3>${escapeHtml(progress.date)} · ${escapeHtml(getTopicAssociationLabel(progress.topicId, "原关联主题已删除"))}</h3>
       <span class="completion-pill ${completion.className}">${escapeHtml(completion.label)} ${progress.completionPercent}%</span>
     </div>
     <div class="progress-card-meta">
@@ -1296,7 +1318,11 @@ function startProgressEditing(progressId) {
   progressDate.max = getToday();
   progressDate.value = progress.date;
   updateProgressTopicOptions();
-  progressTopicSelect.value = progress.topicId;
+  if (isTopicAssociationLocked(progress)) {
+    setLockedTopicSelect(progressTopicSelect, progress.topicId, "原关联主题已删除");
+  } else {
+    progressTopicSelect.value = progress.topicId;
+  }
   updateProgressRelatedOptions(true, progress.resourceId || "", progress.planId || "");
   document.querySelector("#progressDuration").value = progress.durationMinutes;
   document.querySelector("#progressCompletion").value = progress.completionPercent;
@@ -1351,7 +1377,11 @@ function openResourceForm(topicId = "", resourceId = "") {
     resourceFormDescription.textContent = "修改资料基础信息后，资料列表和主题详情会同步更新。";
     resourceSubmitButton.textContent = "保存修改";
     document.querySelector("#resourceTitle").value = resource.title;
-    resourceTopicSelect.value = resource.topicId;
+    if (isTopicAssociationLocked(resource)) {
+      setLockedTopicSelect(resourceTopicSelect, resource.topicId, "未找到主题");
+    } else {
+      resourceTopicSelect.value = resource.topicId;
+    }
     document.querySelector("#resourceType").value = resource.type;
     document.querySelector("#resourceStatus").value = resource.status;
   } else {
@@ -1539,10 +1569,59 @@ function updateParentOptions() {
   });
 }
 
+function getActiveTopics() {
+  return window.LearningDataModel.getActiveTopics(topics);
+}
+
+function isActiveTopicId(topicId) {
+  return getActiveTopics().some((topic) => topic.id === topicId);
+}
+
+function getTopicAssociationLabel(topicId, missingLabel = "原关联主题已删除") {
+  const topic = topics.find((item) => item.id === topicId);
+  if (!topic) {
+    return missingLabel;
+  }
+
+  return `${getTopicPath(topic)}${topic.isArchived ? " · 已归档" : ""}`;
+}
+
+function isTopicAssociationLocked(record) {
+  return Boolean(record && !isActiveTopicId(record.topicId));
+}
+
+function preserveLockedTopicAssociation(record, submittedTopicId) {
+  return isTopicAssociationLocked(record) ? record.topicId : submittedTopicId;
+}
+
+function setLockedTopicSelect(select, topicId, missingLabel) {
+  select.innerHTML = "";
+  const option = document.createElement("option");
+  option.value = topicId;
+  option.textContent = `${getTopicAssociationLabel(topicId, missingLabel)}（关联不可修改）`;
+  option.selected = true;
+  select.appendChild(option);
+  select.disabled = true;
+}
+
+function setEmptyTopicOption(select) {
+  select.innerHTML = '<option value="">请先创建或恢复学习主题</option>';
+  select.disabled = true;
+}
+
 function updateResourceTopicOptions() {
+  const activeTopics = getActiveTopics();
   resourceTopicSelect.innerHTML = "";
 
-  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
+  if (!activeTopics.length) {
+    setEmptyTopicOption(resourceTopicSelect);
+    resourceSubmitButton.disabled = !editingResourceId;
+    return;
+  }
+
+  resourceTopicSelect.disabled = false;
+  resourceSubmitButton.disabled = false;
+  window.LearningDataModel.getOrderedTopics(activeTopics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
@@ -1552,30 +1631,29 @@ function updateResourceTopicOptions() {
 
 function updatePlanTopicOptions() {
   const currentValue = planTopicSelect.value;
+  const activeTopics = getActiveTopics();
   planTopicSelect.innerHTML = "";
 
-  if (!topics.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "请先创建学习主题";
-    planTopicSelect.appendChild(option);
-    planTopicSelect.disabled = true;
+  if (!activeTopics.length) {
+    setEmptyTopicOption(planTopicSelect);
     planResourceSelect.disabled = true;
     planTaskInput.disabled = true;
+    planForm.querySelector('button[type="submit"]').disabled = true;
     return;
   }
 
   planTopicSelect.disabled = false;
   planTaskInput.disabled = false;
+  planForm.querySelector('button[type="submit"]').disabled = false;
 
-  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
+  window.LearningDataModel.getOrderedTopics(activeTopics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
     planTopicSelect.appendChild(option);
   });
 
-  if (topics.some((topic) => topic.id === currentValue)) {
+  if (activeTopics.some((topic) => topic.id === currentValue)) {
     planTopicSelect.value = currentValue;
   }
 }
@@ -1592,33 +1670,32 @@ function updatePlanResourceOptions() {
     planResourceSelect.appendChild(option);
   });
 
-  planResourceSelect.disabled = !topics.length;
+  planResourceSelect.disabled = !getActiveTopics().length;
 }
 
 function updateNoteTopicOptions() {
   const currentValue = noteTopicSelect.value;
+  const activeTopics = getActiveTopics();
   noteTopicSelect.innerHTML = "";
 
-  if (!topics.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "请先创建学习主题";
-    noteTopicSelect.appendChild(option);
-    noteTopicSelect.disabled = true;
+  if (!activeTopics.length) {
+    setEmptyTopicOption(noteTopicSelect);
     noteResourceSelect.disabled = true;
     notePlanSelect.disabled = true;
+    noteSubmitButton.disabled = !editingNoteId;
     return;
   }
 
   noteTopicSelect.disabled = false;
-  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
+  noteSubmitButton.disabled = false;
+  window.LearningDataModel.getOrderedTopics(activeTopics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
     noteTopicSelect.appendChild(option);
   });
 
-  if (topics.some((topic) => topic.id === currentValue)) {
+  if (activeTopics.some((topic) => topic.id === currentValue)) {
     noteTopicSelect.value = currentValue;
   }
 }
@@ -1644,34 +1721,33 @@ function updateNoteRelatedOptions() {
     notePlanSelect.appendChild(option);
   });
 
-  noteResourceSelect.disabled = !topics.length;
-  notePlanSelect.disabled = !topics.length;
+  noteResourceSelect.disabled = !getActiveTopics().length && !editingNoteId;
+  notePlanSelect.disabled = !getActiveTopics().length && !editingNoteId;
 }
 
 function updateProgressTopicOptions() {
   const currentValue = progressTopicSelect.value;
+  const activeTopics = getActiveTopics();
   progressTopicSelect.innerHTML = "";
 
-  if (!topics.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "请先创建学习主题";
-    progressTopicSelect.appendChild(option);
-    progressTopicSelect.disabled = true;
+  if (!activeTopics.length) {
+    setEmptyTopicOption(progressTopicSelect);
     progressResourceSelect.disabled = true;
     progressPlanSelect.disabled = true;
+    progressSubmitButton.disabled = !editingProgressId;
     return;
   }
 
   progressTopicSelect.disabled = false;
-  window.LearningDataModel.getOrderedTopics(topics).forEach((topic) => {
+  progressSubmitButton.disabled = false;
+  window.LearningDataModel.getOrderedTopics(activeTopics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
     option.textContent = getTopicPath(topic);
     progressTopicSelect.appendChild(option);
   });
 
-  if (topics.some((topic) => topic.id === currentValue)) {
+  if (activeTopics.some((topic) => topic.id === currentValue)) {
     progressTopicSelect.value = currentValue;
   }
 }
@@ -1731,8 +1807,8 @@ function updateProgressRelatedOptions(preserveMissingAssociations = false, prese
     progressPlanSelect.value = currentPlanId;
   }
 
-  progressResourceSelect.disabled = !topics.length;
-  progressPlanSelect.disabled = !topics.length;
+  progressResourceSelect.disabled = !getActiveTopics().length && !editingProgressId;
+  progressPlanSelect.disabled = !getActiveTopics().length && !editingProgressId;
 }
 
 function groupByDirection(items) {
