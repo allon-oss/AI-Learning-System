@@ -145,7 +145,7 @@ let notes = loadItems(NOTE_STORAGE_KEY, []);
 /** @type {ProgressRecord[]} */
 let progressRecords = loadItems(PROGRESS_STORAGE_KEY, []);
 
-let selectedTopicId = window.LearningDataModel.getOrderedTopics(topics)[0]?.id || "";
+let selectedTopicId = window.LearningDataModel.getOrderedTopics(window.LearningDataModel.getActiveTopics(topics))[0]?.id || "";
 let selectedResourceId = resources[0]?.id || "";
 let selectedNoteId = notes[0]?.id || "";
 let editingTopicId = "";
@@ -153,6 +153,7 @@ let editingResourceId = "";
 let editingNoteId = "";
 let editingProgressId = "";
 let selectedPlanView = "today";
+let showArchivedTopics = false;
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -166,6 +167,10 @@ const directionSelect = document.querySelector("#topicDirection");
 const topicFormTitle = document.querySelector("#topicFormTitle");
 const topicFormDescription = document.querySelector("#topicFormDescription");
 const topicSubmitButton = document.querySelector("#topicSubmitButton");
+const showArchivedTopicsButton = document.querySelector("#showArchivedTopicsButton");
+const hideArchivedTopicsButton = document.querySelector("#hideArchivedTopicsButton");
+const archivedTopicsPanel = document.querySelector("#archivedTopicsPanel");
+const archivedTopicList = document.querySelector("#archivedTopicList");
 
 const resourceList = document.querySelector("#resourceList");
 const resourceDetail = document.querySelector("#resourceDetail");
@@ -224,6 +229,33 @@ const progressList = document.querySelector("#progressList");
 
 showFormButton.addEventListener("click", () => {
   openTopicForm();
+});
+
+showArchivedTopicsButton.addEventListener("click", () => {
+  showArchivedTopics = true;
+  renderArchivedTopicList();
+  archivedTopicsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+hideArchivedTopicsButton.addEventListener("click", () => {
+  showArchivedTopics = false;
+  renderArchivedTopicList();
+  showArchivedTopicsButton.focus();
+});
+
+archivedTopicList.addEventListener("click", (event) => {
+  const selectButton = event.target.closest("[data-select-archived-topic]");
+  const restoreButton = event.target.closest("[data-restore-topic]");
+
+  if (selectButton) {
+    selectedTopicId = selectButton.dataset.selectArchivedTopic;
+    renderTopicDetail();
+    return;
+  }
+
+  if (restoreButton) {
+    restoreTopic(restoreButton.dataset.restoreTopic);
+  }
 });
 
 cancelFormButton.addEventListener("click", () => {
@@ -529,11 +561,23 @@ progressForm.addEventListener("submit", (event) => {
 
 topicDetail.addEventListener("click", (event) => {
   const editButton = event.target.closest("[data-edit-topic]");
+  const archiveButton = event.target.closest("[data-archive-topic]");
+  const restoreButton = event.target.closest("[data-restore-topic]");
   const addButton = event.target.closest("[data-add-resource-topic]");
   const resourceButton = event.target.closest("[data-view-resource]");
 
   if (editButton) {
     openTopicForm(editButton.dataset.editTopic);
+    return;
+  }
+
+  if (archiveButton) {
+    archiveTopic(archiveButton.dataset.archiveTopic);
+    return;
+  }
+
+  if (restoreButton) {
+    restoreTopic(restoreButton.dataset.restoreTopic);
     return;
   }
 
@@ -658,6 +702,7 @@ function render() {
   updateProgressRelatedOptions(Boolean(editingProgressId));
   renderTopicSummary();
   renderTopicList();
+  renderArchivedTopicList();
   renderTopicDetail();
   renderResourceSummary();
   renderResourceList();
@@ -672,13 +717,23 @@ function render() {
 }
 
 function renderTopicSummary() {
-  const activeCount = topics.filter((topic) => topic.status === "学习中").length;
-  topicSummary.textContent = `当前共有 ${topics.length} 个主题，其中 ${activeCount} 个正在学习。`;
+  const activeTopics = window.LearningDataModel.getActiveTopics(topics);
+  const activeCount = activeTopics.filter((topic) => topic.status === "学习中").length;
+  const archivedCount = topics.length - activeTopics.length;
+  topicSummary.textContent = archivedCount
+    ? `当前共有 ${activeTopics.length} 个活动主题，其中 ${activeCount} 个正在学习；另有 ${archivedCount} 个已归档主题。`
+    : `当前共有 ${activeTopics.length} 个主题，其中 ${activeCount} 个正在学习。`;
 }
 
 function renderTopicList() {
-  const groupedTopics = groupByDirection(window.LearningDataModel.getOrderedTopics(topics));
+  const activeTopics = window.LearningDataModel.getActiveTopics(topics);
+  const groupedTopics = groupByDirection(window.LearningDataModel.getOrderedTopics(activeTopics));
   topicList.innerHTML = "";
+
+  if (!activeTopics.length) {
+    topicList.innerHTML = "<p>当前没有活动主题。可在“已归档主题”中恢复主题。</p>";
+    return;
+  }
 
   Object.entries(groupedTopics).forEach(([direction, directionTopics]) => {
     const group = document.createElement("section");
@@ -740,6 +795,62 @@ function renderTopicList() {
   });
 }
 
+function renderArchivedTopicList() {
+  archivedTopicsPanel.classList.toggle("hidden", !showArchivedTopics);
+
+  if (!showArchivedTopics) {
+    return;
+  }
+
+  const archivedTopics = topics.filter((topic) => topic.isArchived);
+  const groupedTopics = groupByDirection(window.LearningDataModel.getOrderedTopics(archivedTopics));
+  archivedTopicList.innerHTML = "";
+
+  if (!archivedTopics.length) {
+    archivedTopicList.innerHTML = "<p>当前没有已归档主题。</p>";
+    return;
+  }
+
+  Object.entries(groupedTopics).forEach(([direction, directionTopics]) => {
+    const group = document.createElement("section");
+    group.className = "topic-group";
+
+    const heading = document.createElement("h3");
+    heading.textContent = direction;
+    group.appendChild(heading);
+
+    directionTopics.forEach((topic) => {
+      const article = document.createElement("article");
+      article.className = topic.id === selectedTopicId ? "topic-card topic-card-with-actions selected" : "topic-card topic-card-with-actions";
+
+      const selectButton = document.createElement("button");
+      selectButton.type = "button";
+      selectButton.className = "topic-card-select";
+      selectButton.dataset.selectArchivedTopic = topic.id;
+      selectButton.setAttribute("aria-pressed", topic.id === selectedTopicId ? "true" : "false");
+      selectButton.innerHTML = `
+        <span class="topic-card-title">${escapeHtml(topic.name)}</span>
+        <span class="topic-card-meta">已归档 · ${escapeHtml(topic.status)}</span>
+        <span class="topic-card-description">${escapeHtml(topic.description || "暂时没有描述。")}</span>
+      `;
+
+      const actions = document.createElement("div");
+      actions.className = "topic-order-actions";
+      if (topic.archiveRootId === topic.id) {
+        actions.innerHTML = `<button class="small-button" type="button" data-restore-topic="${escapeHtml(topic.id)}">恢复主题</button>`;
+      } else {
+        actions.innerHTML = "<span class=\"topic-card-meta\">随父主题归档</span>";
+      }
+
+      article.appendChild(selectButton);
+      article.appendChild(actions);
+      group.appendChild(article);
+    });
+
+    archivedTopicList.appendChild(group);
+  });
+}
+
 function renderTopicDetail() {
   const topic = topics.find((item) => item.id === selectedTopicId);
   if (!topic) {
@@ -754,29 +865,33 @@ function renderTopicDetail() {
   const relatedProgressRecords = getSortedProgressRecords().filter((progress) => progress.topicId === topic.id);
   const relatedDuration = getTotalDuration(relatedProgressRecords);
   const path = getTopicPath(topic);
+  const topicActions = topic.isArchived
+    ? topic.archiveRootId === topic.id
+      ? `<div class="detail-actions"><button class="secondary-button" type="button" data-restore-topic="${escapeHtml(topic.id)}">恢复主题</button></div>`
+      : "<p class=\"topic-card-meta\">该主题随父主题归档，请从归档组根主题恢复。</p>"
+    : `<div class="detail-actions"><button class="secondary-button" type="button" data-edit-topic="${escapeHtml(topic.id)}">编辑主题</button><button class="danger-button" type="button" data-archive-topic="${escapeHtml(topic.id)}">归档主题</button></div>`;
+  const relatedResourceHeading = topic.isArchived
+    ? "<h3>相关资料</h3>"
+    : `<div class="section-title-row"><h3>相关资料</h3><button class="small-button" type="button" data-add-resource-topic="${escapeHtml(topic.id)}">新增该主题的资料</button></div>`;
 
   topicDetail.innerHTML = `
     <div class="panel-heading">
       <p class="eyebrow">${escapeHtml(path)}</p>
       <h2>${escapeHtml(topic.name)}</h2>
       <span class="status-pill">${escapeHtml(topic.status)}</span>
+      ${topic.isArchived ? '<span class="status-pill archive-status">已归档</span>' : ""}
     </div>
     <div class="detail-section">
       <h3>描述</h3>
       <p>${escapeHtml(topic.description || "还没有描述，可以后续补充。")}</p>
     </div>
-    <div class="detail-actions">
-      <button class="secondary-button" type="button" data-edit-topic="${escapeHtml(topic.id)}">编辑主题</button>
-    </div>
+    ${topicActions}
     <div class="detail-section">
       <h3>子主题</h3>
       ${children.length ? `<ul>${children.map((child) => `<li>${escapeHtml(child.name)} · ${escapeHtml(child.status)}</li>`).join("")}</ul>` : "<p>还没有子主题。</p>"}
     </div>
     <div class="detail-section">
-      <div class="section-title-row">
-        <h3>相关资料</h3>
-        <button class="small-button" type="button" data-add-resource-topic="${escapeHtml(topic.id)}">新增该主题的资料</button>
-      </div>
+      ${relatedResourceHeading}
       ${renderRelatedResources(relatedResources)}
     </div>
     <div class="detail-grid compact-grid">
@@ -1355,6 +1470,58 @@ function closeTopicForm() {
   topicSubmitButton.textContent = "保存主题";
   topicFormPanel.classList.add("hidden");
   updateParentOptions();
+}
+
+function archiveTopic(topicId) {
+  const topic = topics.find((item) => item.id === topicId);
+  if (!topic || topic.isArchived) {
+    return;
+  }
+
+  const topicIds = window.LearningDataModel.getTopicDescendantIds(topics, topicId);
+  const impact = window.LearningDataModel.getTopicArchiveImpact(topicIds, resources, plans, notes, progressRecords);
+  const confirmed = window.confirm(
+    `将归档 ${impact.topics} 个主题（含全部子主题）。\n关联资料：${impact.resources} 条；计划：${impact.plans} 条；笔记：${impact.notes} 条；进度：${impact.progressRecords} 条。\n历史数据会保留，但归档后不能新增或改关联到这些主题。\n本次不会删除任何数据。是否继续？`,
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const result = window.LearningDataModel.archiveTopicTree(topics, topicId, new Date().toISOString());
+  topics = result.topics;
+  if (topicIds.includes(selectedTopicId)) {
+    selectedTopicId = window.LearningDataModel.getOrderedTopics(window.LearningDataModel.getActiveTopics(topics))[0]?.id || "";
+  }
+  if (topicIds.includes(editingTopicId)) {
+    closeTopicForm();
+  }
+  saveItems(TOPIC_STORAGE_KEY, topics);
+  render();
+}
+
+function restoreTopic(archiveRootId) {
+  const archiveRoot = topics.find(
+    (topic) => topic.id === archiveRootId && topic.isArchived && topic.archiveRootId === archiveRootId,
+  );
+  if (!archiveRoot) {
+    return;
+  }
+
+  const confirmed = window.confirm(`确定要恢复“${archiveRoot.name}”及其全部子主题吗？恢复后可再次编辑并用于新的学习关联。`);
+  if (!confirmed) {
+    return;
+  }
+
+  const result = window.LearningDataModel.restoreTopicTree(topics, archiveRootId);
+  if (!result.restored) {
+    return;
+  }
+
+  topics = result.topics;
+  selectedTopicId = archiveRootId;
+  saveItems(TOPIC_STORAGE_KEY, topics);
+  render();
 }
 
 function updateParentOptions() {

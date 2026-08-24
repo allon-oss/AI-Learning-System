@@ -68,13 +68,27 @@
       <section class="layout">
         <section class="panel topic-list-panel">
           <div class="panel-heading">
-            <h2>我的学习主题</h2>
+            <div class="section-title-row">
+              <h2>我的学习主题</h2>
+              <button id="showArchivedTopicsButton" class="small-button" type="button">查看已归档主题</button>
+            </div>
             <p id="topicSummary"></p>
           </div>
           <div id="topicList" class="topic-list"></div>
         </section>
 
         <aside id="topicDetail" class="panel topic-detail" aria-label="学习主题详情"></aside>
+      </section>
+
+      <section id="archivedTopicsPanel" class="panel archived-topics-panel hidden" aria-label="已归档学习主题">
+        <div class="panel-heading">
+          <div class="section-title-row">
+            <h2>已归档主题</h2>
+            <button id="hideArchivedTopicsButton" class="small-button" type="button">收起</button>
+          </div>
+          <p>归档主题保留历史数据，恢复后才能再次编辑或用于新的学习关联。</p>
+        </div>
+        <div id="archivedTopicList" class="topic-list"></div>
       </section>
 
       <section class="page-header resource-header">

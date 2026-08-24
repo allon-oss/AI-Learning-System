@@ -299,6 +299,15 @@ textarea {
   font-weight: 700;
 }
 
+.archive-status {
+  background: #ece8df;
+  color: #4f5f55;
+}
+
+.archived-topics-panel {
+  margin-top: 20px;
+}
+
 .status-context {
   display: flex;
   flex-wrap: wrap;
