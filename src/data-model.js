@@ -8,7 +8,16 @@
       return [];
     }
 
-    const normalized = topics.map((topic) => ({ ...topic }));
+    const normalized = topics.map((topic) => {
+      const isArchived = topic.isArchived === true;
+
+      return {
+        ...topic,
+        isArchived,
+        archivedAt: isArchived && typeof topic.archivedAt === "string" ? topic.archivedAt : null,
+        archiveRootId: isArchived && typeof topic.archiveRootId === "string" && topic.archiveRootId ? topic.archiveRootId : null,
+      };
+    });
     const scopes = new Map();
 
     normalized.forEach((topic, index) => {
@@ -44,6 +53,168 @@
     });
 
     return normalized;
+  }
+
+  function getActiveTopics(topics) {
+    return normalizeTopics(topics).filter((topic) => !topic.isArchived);
+  }
+
+  function getTopicDescendantIds(topics, rootId) {
+    const normalized = normalizeTopics(topics);
+    const root = normalized.find((topic) => topic.id === rootId);
+
+    if (!root) {
+      return [];
+    }
+
+    const childrenByParent = new Map();
+    normalized.forEach((topic) => {
+      if (topic.direction !== root.direction) {
+        return;
+      }
+
+      if (!childrenByParent.has(topic.parentId)) {
+        childrenByParent.set(topic.parentId, []);
+      }
+
+      childrenByParent.get(topic.parentId).push(topic);
+    });
+
+    childrenByParent.forEach((children) => {
+      children.sort((first, second) => first.sortOrder - second.sortOrder);
+    });
+
+    const topicIds = [];
+    const visited = new Set();
+    const appendTopic = (topic) => {
+      if (visited.has(topic.id)) {
+        return;
+      }
+
+      visited.add(topic.id);
+      topicIds.push(topic.id);
+      (childrenByParent.get(topic.id) || []).forEach(appendTopic);
+    };
+
+    appendTopic(root);
+    return topicIds;
+  }
+
+  function getAllowedParentTopics(topics, topicId, direction) {
+    const excludedIds = new Set(getTopicDescendantIds(topics, topicId));
+
+    return getOrderedTopics(getActiveTopics(topics)).filter(
+      (topic) => topic.direction === direction && !excludedIds.has(topic.id),
+    );
+  }
+
+  function updateTopic(topics, topicId, changes) {
+    const normalized = normalizeTopics(topics);
+    const topic = normalized.find((item) => item.id === topicId);
+
+    if (!topic) {
+      return { topics: normalized, error: "not-found" };
+    }
+
+    if (topic.isArchived) {
+      return { topics: normalized, error: "archived" };
+    }
+
+    const parentId = typeof changes?.parentId === "string" ? changes.parentId : topic.parentId;
+    const allowedParentIds = new Set(getAllowedParentTopics(normalized, topicId, topic.direction).map((item) => item.id));
+
+    if (parentId && !allowedParentIds.has(parentId)) {
+      return { topics: normalized, error: "invalid-parent" };
+    }
+
+    const parentChanged = parentId !== topic.parentId;
+    const sortOrder = parentChanged ? getNextTopicSortOrder(normalized, topic.direction, parentId) : topic.sortOrder;
+    const updatedTopics = normalized.map((item) => {
+      if (item.id !== topicId) {
+        return item;
+      }
+
+      return {
+        ...item,
+        name: typeof changes?.name === "string" ? changes.name : item.name,
+        status: typeof changes?.status === "string" ? changes.status : item.status,
+        parentId,
+        sortOrder,
+        updatedAt: typeof changes?.updatedAt === "string" ? changes.updatedAt : item.updatedAt,
+      };
+    });
+
+    return { topics: normalizeTopics(updatedTopics), error: null };
+  }
+
+  function archiveTopicTree(topics, rootId, archivedAt) {
+    const normalized = normalizeTopics(topics);
+    const root = normalized.find((topic) => topic.id === rootId);
+
+    if (!root || root.isArchived) {
+      return { topics: normalized, archiveRootId: "", topicIds: [] };
+    }
+
+    const topicIds = getTopicDescendantIds(normalized, rootId);
+    const archivedTopicIds = new Set(topicIds);
+    const updatedTopics = normalized.map((topic) => {
+      if (!archivedTopicIds.has(topic.id)) {
+        return topic;
+      }
+
+      return {
+        ...topic,
+        isArchived: true,
+        archivedAt: typeof archivedAt === "string" ? archivedAt : null,
+        archiveRootId: rootId,
+      };
+    });
+
+    return {
+      topics: normalizeTopics(updatedTopics),
+      archiveRootId: rootId,
+      topicIds,
+    };
+  }
+
+  function restoreTopicTree(topics, archiveRootId) {
+    const normalized = normalizeTopics(topics);
+    const root = normalized.find(
+      (topic) => topic.id === archiveRootId && topic.isArchived && topic.archiveRootId === archiveRootId,
+    );
+
+    if (!root) {
+      return { topics: normalized, restored: false };
+    }
+
+    const restoredTopics = normalized.map((topic) => {
+      if (topic.archiveRootId !== archiveRootId) {
+        return topic;
+      }
+
+      return {
+        ...topic,
+        isArchived: false,
+        archivedAt: null,
+        archiveRootId: null,
+      };
+    });
+
+    return { topics: normalizeTopics(restoredTopics), restored: true };
+  }
+
+  function getTopicArchiveImpact(topicIds, resources, plans, notes, progressRecords) {
+    const topicIdSet = new Set(Array.isArray(topicIds) ? topicIds.filter((topicId) => typeof topicId === "string") : []);
+    const countRelatedRecords = (records) =>
+      Array.isArray(records) ? records.filter((record) => topicIdSet.has(record.topicId)).length : 0;
+
+    return {
+      topics: topicIdSet.size,
+      resources: countRelatedRecords(resources),
+      plans: countRelatedRecords(plans),
+      notes: countRelatedRecords(notes),
+      progressRecords: countRelatedRecords(progressRecords),
+    };
   }
 
   function getOrderedTopics(topics) {
@@ -220,6 +391,13 @@
 
   const api = {
     normalizeTopics,
+    getActiveTopics,
+    getTopicDescendantIds,
+    getAllowedParentTopics,
+    updateTopic,
+    archiveTopicTree,
+    restoreTopicTree,
+    getTopicArchiveImpact,
     getOrderedTopics,
     getNextTopicSortOrder,
     moveTopic,

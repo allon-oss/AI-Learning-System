@@ -184,3 +184,123 @@ test("进度日期无效或计划输入不是数组时没有可关联计划", ()
   assert.deepEqual(model.getEligiblePlansForProgress([], "topic-a", "2026-02-30"), []);
   assert.deepEqual(model.getEligiblePlansForProgress({}, "topic-a", "2026-08-20"), []);
 });
+
+test("旧主题缺少归档字段时默认保持未归档", () => {
+  const legacyTopics = [{ id: "topic-a", direction: "AI 学习", parentId: "", sortOrder: 0 }];
+
+  const normalized = model.normalizeTopics(legacyTopics);
+
+  assert.deepEqual(normalized[0], {
+    ...legacyTopics[0],
+    isArchived: false,
+    archivedAt: null,
+    archiveRootId: null,
+  });
+  assert.equal("isArchived" in legacyTopics[0], false);
+});
+
+test("活动主题列表排除已归档主题且不改写输入", () => {
+  const topics = [
+    { id: "active", direction: "AI 学习", parentId: "", sortOrder: 0 },
+    { id: "archived", direction: "AI 学习", parentId: "", sortOrder: 1, isArchived: true, archivedAt: "2026-08-24T10:00:00.000Z", archiveRootId: "archived" },
+  ];
+
+  const activeTopics = model.getActiveTopics(topics);
+
+  assert.deepEqual(activeTopics.map((topic) => topic.id), ["active"]);
+  assert.equal(topics[0].isArchived, undefined);
+  assert.equal(topics[1].isArchived, true);
+});
+
+function createTopicTree() {
+  return [
+    { id: "root", direction: "AI 学习", parentId: "", sortOrder: 0, name: "根主题", description: "根说明", status: "学习中", createdAt: "2026-08-20" },
+    { id: "child", direction: "AI 学习", parentId: "root", sortOrder: 0, name: "子主题", description: "子说明", status: "未开始", createdAt: "2026-08-21" },
+    { id: "grandchild", direction: "AI 学习", parentId: "child", sortOrder: 0, name: "孙主题", description: "孙说明", status: "未开始", createdAt: "2026-08-22" },
+    { id: "sibling", direction: "AI 学习", parentId: "", sortOrder: 1, name: "同级主题", description: "同级说明", status: "暂停", createdAt: "2026-08-23" },
+    { id: "archived-parent", direction: "AI 学习", parentId: "", sortOrder: 2, name: "已归档主题", description: "归档说明", status: "暂停", createdAt: "2026-08-23", isArchived: true, archivedAt: "2026-08-24T09:00:00.000Z", archiveRootId: "archived-parent" },
+    { id: "other-direction", direction: "雅思英语学习", parentId: "", sortOrder: 0, name: "其他方向", description: "其他说明", status: "学习中", createdAt: "2026-08-23" },
+  ];
+}
+
+test("主题子树按父子顺序包含根主题和全部子孙主题", () => {
+  const topicIds = model.getTopicDescendantIds(createTopicTree(), "root");
+
+  assert.deepEqual(topicIds, ["root", "child", "grandchild"]);
+});
+
+test("可选父主题排除自身、子孙、归档主题和其他学习方向", () => {
+  const parents = model.getAllowedParentTopics(createTopicTree(), "root", "AI 学习");
+
+  assert.deepEqual(parents.map((topic) => topic.id), ["sibling"]);
+});
+
+test("归档父主题会级联归档全部子孙主题且不改写历史关联", () => {
+  const topics = createTopicTree();
+  const resources = [{ id: "resource-child", topicId: "child", title: "子资料" }];
+  const plans = [{ id: "plan-grandchild", topicId: "grandchild", task: "孙任务" }];
+  const notes = [{ id: "note-root", topicId: "root", title: "根笔记" }];
+  const progressRecords = [{ id: "progress-sibling", topicId: "sibling", durationMinutes: 30 }];
+
+  const result = model.archiveTopicTree(topics, "root", "2026-08-24T10:00:00.000Z");
+
+  assert.deepEqual(result.topicIds, ["root", "child", "grandchild"]);
+  assert.equal(result.archiveRootId, "root");
+  assert.deepEqual(
+    result.topics.filter((topic) => result.topicIds.includes(topic.id)).map((topic) => [topic.id, topic.isArchived, topic.archivedAt, topic.archiveRootId]),
+    [
+      ["root", true, "2026-08-24T10:00:00.000Z", "root"],
+      ["child", true, "2026-08-24T10:00:00.000Z", "root"],
+      ["grandchild", true, "2026-08-24T10:00:00.000Z", "root"],
+    ],
+  );
+  assert.equal(result.topics.find((topic) => topic.id === "sibling").isArchived, false);
+  assert.equal(resources[0].topicId, "child");
+  assert.equal(plans[0].topicId, "grandchild");
+  assert.equal(notes[0].topicId, "root");
+  assert.equal(progressRecords[0].topicId, "sibling");
+  assert.equal(topics.find((topic) => topic.id === "root").isArchived, undefined);
+});
+
+test("归档影响统计只计算归档主题树关联的历史记录", () => {
+  const impact = model.getTopicArchiveImpact(
+    ["root", "child", "grandchild"],
+    [{ id: "resource-child", topicId: "child" }, { id: "resource-sibling", topicId: "sibling" }],
+    [{ id: "plan-root", topicId: "root" }, { id: "plan-sibling", topicId: "sibling" }],
+    [{ id: "note-grandchild", topicId: "grandchild" }, { id: "note-missing", topicId: "missing" }],
+    [{ id: "progress-child", topicId: "child" }, { id: "progress-root", topicId: "root" }, { id: "progress-sibling", topicId: "sibling" }],
+  );
+
+  assert.deepEqual(impact, { topics: 3, resources: 1, plans: 1, notes: 1, progressRecords: 2 });
+});
+
+test("只有归档组根主题可以恢复整棵主题树", () => {
+  const archivedTopics = model.archiveTopicTree(createTopicTree(), "root", "2026-08-24T10:00:00.000Z").topics;
+
+  assert.equal(model.restoreTopicTree(archivedTopics, "child").restored, false);
+
+  const restored = model.restoreTopicTree(archivedTopics, "root");
+  const restoredTree = restored.topics.filter((topic) => ["root", "child", "grandchild"].includes(topic.id));
+
+  assert.equal(restored.restored, true);
+  assert.ok(restoredTree.every((topic) => topic.isArchived === false && topic.archivedAt === null && topic.archiveRootId === null));
+});
+
+test("编辑主题阻止循环和归档主题，并在更换父级后保留主题身份", () => {
+  const topics = createTopicTree();
+
+  const cyclic = model.updateTopic(topics, "root", { name: "根主题", status: "学习中", parentId: "grandchild", updatedAt: "2026-08-24" });
+  assert.equal(cyclic.error, "invalid-parent");
+
+  const archived = model.updateTopic(topics, "archived-parent", { name: "不应保存", status: "学习中", parentId: "", updatedAt: "2026-08-24" });
+  assert.equal(archived.error, "archived");
+
+  const updated = model.updateTopic(topics, "child", { name: "已移动子主题", status: "学习中", parentId: "sibling", updatedAt: "2026-08-24" });
+  const moved = updated.topics.find((topic) => topic.id === "child");
+
+  assert.equal(updated.error, null);
+  assert.deepEqual(
+    [moved.id, moved.direction, moved.description, moved.createdAt, moved.name, moved.status, moved.parentId, moved.sortOrder, moved.updatedAt],
+    ["child", "AI 学习", "子说明", "2026-08-21", "已移动子主题", "学习中", "sibling", 0, "2026-08-24"],
+  );
+});
