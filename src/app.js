@@ -148,6 +148,7 @@ let progressRecords = loadItems(PROGRESS_STORAGE_KEY, []);
 let selectedTopicId = window.LearningDataModel.getOrderedTopics(topics)[0]?.id || "";
 let selectedResourceId = resources[0]?.id || "";
 let selectedNoteId = notes[0]?.id || "";
+let editingTopicId = "";
 let editingResourceId = "";
 let editingNoteId = "";
 let editingProgressId = "";
@@ -162,6 +163,9 @@ const showFormButton = document.querySelector("#showFormButton");
 const cancelFormButton = document.querySelector("#cancelFormButton");
 const parentSelect = document.querySelector("#topicParent");
 const directionSelect = document.querySelector("#topicDirection");
+const topicFormTitle = document.querySelector("#topicFormTitle");
+const topicFormDescription = document.querySelector("#topicFormDescription");
+const topicSubmitButton = document.querySelector("#topicSubmitButton");
 
 const resourceList = document.querySelector("#resourceList");
 const resourceDetail = document.querySelector("#resourceDetail");
@@ -219,14 +223,11 @@ const progressSummary = document.querySelector("#progressSummary");
 const progressList = document.querySelector("#progressList");
 
 showFormButton.addEventListener("click", () => {
-  topicFormPanel.classList.remove("hidden");
-  document.querySelector("#topicName").focus();
+  openTopicForm();
 });
 
 cancelFormButton.addEventListener("click", () => {
-  topicForm.reset();
-  topicFormPanel.classList.add("hidden");
-  updateParentOptions();
+  closeTopicForm();
 });
 
 directionSelect.addEventListener("change", updateParentOptions);
@@ -236,6 +237,28 @@ topicForm.addEventListener("submit", (event) => {
 
   const formData = new FormData(topicForm);
   const now = getToday();
+
+  if (editingTopicId) {
+    const result = window.LearningDataModel.updateTopic(topics, editingTopicId, {
+      name: formData.get("name").trim(),
+      status: formData.get("status"),
+      parentId: formData.get("parentId"),
+      updatedAt: now,
+    });
+
+    if (result.error) {
+      window.alert("当前主题无法保存，请重新选择允许的父主题后再试。");
+      return;
+    }
+
+    topics = result.topics;
+    selectedTopicId = editingTopicId;
+    saveItems(TOPIC_STORAGE_KEY, topics);
+    closeTopicForm();
+    render();
+    return;
+  }
+
   const topic = {
     id: `topic-${Date.now()}`,
     name: formData.get("name").trim(),
@@ -251,8 +274,7 @@ topicForm.addEventListener("submit", (event) => {
   topics = window.LearningDataModel.normalizeTopics([...topics, topic]);
   selectedTopicId = topic.id;
   saveItems(TOPIC_STORAGE_KEY, topics);
-  topicForm.reset();
-  topicFormPanel.classList.add("hidden");
+  closeTopicForm();
   render();
 });
 
@@ -506,8 +528,14 @@ progressForm.addEventListener("submit", (event) => {
 });
 
 topicDetail.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-topic]");
   const addButton = event.target.closest("[data-add-resource-topic]");
   const resourceButton = event.target.closest("[data-view-resource]");
+
+  if (editButton) {
+    openTopicForm(editButton.dataset.editTopic);
+    return;
+  }
 
   if (addButton) {
     openResourceForm(addButton.dataset.addResourceTopic);
@@ -736,6 +764,9 @@ function renderTopicDetail() {
     <div class="detail-section">
       <h3>描述</h3>
       <p>${escapeHtml(topic.description || "还没有描述，可以后续补充。")}</p>
+    </div>
+    <div class="detail-actions">
+      <button class="secondary-button" type="button" data-edit-topic="${escapeHtml(topic.id)}">编辑主题</button>
     </div>
     <div class="detail-section">
       <h3>子主题</h3>
@@ -1279,11 +1310,58 @@ function deletePlan(planId) {
   render();
 }
 
+function openTopicForm(topicId = "") {
+  const topic = topics.find((item) => item.id === topicId);
+  topicForm.reset();
+  topicFormPanel.classList.remove("hidden");
+
+  if (topic) {
+    editingTopicId = topic.id;
+    topicFormPanel.setAttribute("aria-label", "编辑学习主题");
+    topicFormTitle.textContent = "编辑学习主题";
+    topicFormDescription.textContent = "可修改主题名称、学习状态、父主题和描述；学习方向不能修改。";
+    topicSubmitButton.textContent = "保存修改";
+    document.querySelector("#topicName").value = topic.name;
+    directionSelect.value = topic.direction;
+    directionSelect.disabled = true;
+    updateParentOptions();
+    parentSelect.value = topic.parentId;
+    document.querySelector("#topicStatus").value = topic.status;
+    const topicDescription = document.querySelector("#topicDescription");
+    topicDescription.value = topic.description || "";
+    topicDescription.disabled = true;
+  } else {
+    editingTopicId = "";
+    topicFormPanel.setAttribute("aria-label", "新建学习主题");
+    topicFormTitle.textContent = "新建学习主题";
+    topicFormDescription.textContent = "只填写最必要的信息，先让系统能用起来。";
+    topicSubmitButton.textContent = "保存主题";
+    directionSelect.disabled = false;
+    document.querySelector("#topicDescription").disabled = false;
+    updateParentOptions();
+  }
+
+  document.querySelector("#topicName").focus();
+}
+
+function closeTopicForm() {
+  editingTopicId = "";
+  topicForm.reset();
+  directionSelect.disabled = false;
+  document.querySelector("#topicDescription").disabled = false;
+  topicFormPanel.setAttribute("aria-label", "新建学习主题");
+  topicFormTitle.textContent = "新建学习主题";
+  topicFormDescription.textContent = "只填写最必要的信息，先让系统能用起来。";
+  topicSubmitButton.textContent = "保存主题";
+  topicFormPanel.classList.add("hidden");
+  updateParentOptions();
+}
+
 function updateParentOptions() {
   const direction = directionSelect.value;
-  const parentOptions = window.LearningDataModel
-    .getOrderedTopics(topics)
-    .filter((topic) => topic.direction === direction);
+  const parentOptions = editingTopicId
+    ? window.LearningDataModel.getAllowedParentTopics(topics, editingTopicId, direction)
+    : window.LearningDataModel.getActiveTopics(topics).filter((topic) => topic.direction === direction);
   parentSelect.innerHTML = '<option value="">无</option>';
 
   parentOptions.forEach((topic) => {

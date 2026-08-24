@@ -19,8 +19,8 @@
 
       <section id="topicFormPanel" class="panel hidden" aria-label="新建学习主题">
         <div class="panel-heading">
-          <h2>新建学习主题</h2>
-          <p>只填写最必要的信息，先让系统能用起来。</p>
+          <h2 id="topicFormTitle">新建学习主题</h2>
+          <p id="topicFormDescription">只填写最必要的信息，先让系统能用起来。</p>
         </div>
         <form id="topicForm" class="topic-form">
           <label>
@@ -59,7 +59,7 @@
           </label>
 
           <div class="form-actions">
-            <button class="primary-button" type="submit">保存主题</button>
+            <button id="topicSubmitButton" class="primary-button" type="submit">保存主题</button>
             <button id="cancelFormButton" class="secondary-button" type="button">取消</button>
           </div>
         </form>
