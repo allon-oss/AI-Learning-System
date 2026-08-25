@@ -152,6 +152,17 @@ h3 {
   gap: 16px;
 }
 
+.topic-direction-field,
+.direction-add-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.direction-add-panel {
+  border-left: 3px solid #216e4e;
+  padding-left: 12px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -205,6 +216,10 @@ textarea {
 
 .panel-heading .form-message {
   color: #216e4e;
+}
+
+.form-message.is-error {
+  color: #9a3a2f;
 }
 
 .layout {
@@ -553,6 +568,10 @@ textarea {
   .detail-grid,
   .compact-grid {
     grid-template-columns: 1fr;
+  }
+
+  .direction-add-panel .form-actions {
+    flex-direction: column;
   }
 
   .section-title-row {

@@ -3,6 +3,7 @@ const RESOURCE_STORAGE_KEY = "personal-learning-system-resources";
 const PLAN_STORAGE_KEY = "personal-learning-system-plans";
 const NOTE_STORAGE_KEY = "personal-learning-system-notes";
 const PROGRESS_STORAGE_KEY = "personal-learning-system-progress-records";
+const LEARNING_DIRECTION_STORAGE_KEY = "personal-learning-system-directions";
 
 /**
  * @typedef {Object} Note
@@ -138,6 +139,7 @@ if (!window.LearningDataModel) {
 }
 
 let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, defaultTopics));
+let learningDirections = window.LearningDataModel.normalizeLearningDirections(loadItems(LEARNING_DIRECTION_STORAGE_KEY, []));
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
 let plans = window.LearningDataModel.normalizePlans(loadItems(PLAN_STORAGE_KEY, []));
 /** @type {Note[]} */
@@ -164,6 +166,12 @@ const showFormButton = document.querySelector("#showFormButton");
 const cancelFormButton = document.querySelector("#cancelFormButton");
 const parentSelect = document.querySelector("#topicParent");
 const directionSelect = document.querySelector("#topicDirection");
+const showAddDirectionButton = document.querySelector("#showAddDirectionButton");
+const addDirectionPanel = document.querySelector("#addDirectionPanel");
+const newDirectionName = document.querySelector("#newDirectionName");
+const saveDirectionButton = document.querySelector("#saveDirectionButton");
+const cancelAddDirectionButton = document.querySelector("#cancelAddDirectionButton");
+const addDirectionMessage = document.querySelector("#addDirectionMessage");
 const topicFormTitle = document.querySelector("#topicFormTitle");
 const topicFormDescription = document.querySelector("#topicFormDescription");
 const topicSubmitButton = document.querySelector("#topicSubmitButton");
@@ -261,6 +269,10 @@ archivedTopicList.addEventListener("click", (event) => {
 cancelFormButton.addEventListener("click", () => {
   closeTopicForm();
 });
+
+showAddDirectionButton.addEventListener("click", openAddDirectionPanel);
+saveDirectionButton.addEventListener("click", addDirectionFromForm);
+cancelAddDirectionButton.addEventListener("click", closeAddDirectionPanel);
 
 directionSelect.addEventListener("change", updateParentOptions);
 
@@ -1459,6 +1471,7 @@ function openTopicForm(topicId = "") {
   const topic = topics.find((item) => item.id === topicId);
   topicForm.reset();
   topicFormPanel.classList.remove("hidden");
+  closeAddDirectionPanel({ restoreFocus: false });
 
   if (topic) {
     editingTopicId = topic.id;
@@ -1467,8 +1480,9 @@ function openTopicForm(topicId = "") {
     topicFormDescription.textContent = "可修改主题名称、学习状态、父主题和描述；学习方向不能修改。";
     topicSubmitButton.textContent = "保存修改";
     document.querySelector("#topicName").value = topic.name;
-    directionSelect.value = topic.direction;
+    renderTopicDirectionOptions(topic.direction);
     directionSelect.disabled = true;
+    showAddDirectionButton.classList.add("hidden");
     updateParentOptions();
     parentSelect.value = topic.parentId;
     document.querySelector("#topicStatus").value = topic.status;
@@ -1481,7 +1495,9 @@ function openTopicForm(topicId = "") {
     topicFormTitle.textContent = "新建学习主题";
     topicFormDescription.textContent = "只填写最必要的信息，先让系统能用起来。";
     topicSubmitButton.textContent = "保存主题";
+    renderTopicDirectionOptions();
     directionSelect.disabled = false;
+    showAddDirectionButton.classList.remove("hidden");
     document.querySelector("#topicDescription").disabled = false;
     updateParentOptions();
   }
@@ -1492,7 +1508,9 @@ function openTopicForm(topicId = "") {
 function closeTopicForm() {
   editingTopicId = "";
   topicForm.reset();
+  closeAddDirectionPanel({ restoreFocus: false });
   directionSelect.disabled = false;
+  showAddDirectionButton.classList.remove("hidden");
   document.querySelector("#topicDescription").disabled = false;
   topicFormPanel.setAttribute("aria-label", "新建学习主题");
   topicFormTitle.textContent = "新建学习主题";
@@ -1500,6 +1518,64 @@ function closeTopicForm() {
   topicSubmitButton.textContent = "保存主题";
   topicFormPanel.classList.add("hidden");
   updateParentOptions();
+}
+
+function renderTopicDirectionOptions(selectedDirection = "") {
+  directionSelect.innerHTML = "";
+
+  const directionsToRender = selectedDirection && !learningDirections.includes(selectedDirection)
+    ? [...learningDirections, selectedDirection]
+    : learningDirections;
+
+  directionsToRender.forEach((direction) => {
+    const option = document.createElement("option");
+    option.value = direction;
+    option.textContent = direction;
+    directionSelect.appendChild(option);
+  });
+
+  directionSelect.value = directionsToRender.includes(selectedDirection) ? selectedDirection : learningDirections[0];
+  updateParentOptions();
+}
+
+function openAddDirectionPanel() {
+  if (editingTopicId) {
+    return;
+  }
+
+  addDirectionPanel.classList.remove("hidden");
+  addDirectionMessage.textContent = "";
+  addDirectionMessage.classList.remove("is-error");
+  newDirectionName.focus();
+}
+
+function closeAddDirectionPanel({ restoreFocus = true } = {}) {
+  addDirectionPanel.classList.add("hidden");
+  newDirectionName.value = "";
+  addDirectionMessage.textContent = "";
+  addDirectionMessage.classList.remove("is-error");
+
+  if (restoreFocus && !editingTopicId) {
+    showAddDirectionButton.focus();
+  }
+}
+
+function addDirectionFromForm() {
+  const result = window.LearningDataModel.addLearningDirection(learningDirections, newDirectionName.value);
+
+  if (result.error) {
+    addDirectionMessage.textContent = result.error === "empty" ? "请输入学习方向名称。" : "该学习方向已存在。";
+    addDirectionMessage.classList.add("is-error");
+    return;
+  }
+
+  learningDirections = result.directions;
+  saveItems(LEARNING_DIRECTION_STORAGE_KEY, learningDirections);
+  renderTopicDirectionOptions(result.addedDirection);
+  newDirectionName.value = "";
+  addDirectionMessage.textContent = `已新增学习方向：${result.addedDirection}。`;
+  addDirectionMessage.classList.remove("is-error");
+  document.querySelector("#topicName").focus();
 }
 
 function archiveTopic(topicId) {
