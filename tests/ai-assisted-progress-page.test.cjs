@@ -118,7 +118,9 @@ test("缺少匹配结果不会自动保存，用户补齐后仍可使用既有�
   assert.equal(await page.locator("#progressTopic").inputValue(), "");
   assert.equal(await page.locator("#progressDuration").inputValue(), "");
   assert.equal(await page.locator("#progressCompletion").inputValue(), "");
-  assert.match(await page.locator("#aiProgressWarnings").textContent(), /无法匹配|补充/);
+  const warnings = await page.locator("#aiProgressWarnings").textContent();
+  assert.match(warnings, /还需补充：学习主题、学习时长、完成度。/);
+  assert.match(warnings, /可选关联：关联资料、关联计划。/);
   assert.deepEqual(await getStoredProgress(page), []);
 
   await page.locator("#progressSubmitButton").click();

@@ -94,3 +94,63 @@ test("Mock 不把零分钟描述改成正数", async () => {
   assert.equal(result.draft.durationMinutes, null);
   assert.ok(result.missingFields.includes("durationMinutes"));
 });
+
+test("Mock 不从负数、超范围或小数完成度中截取合法数值", async () => {
+  const invalidDuration = await provider.generateProgressDraft({
+    description: "今天学习 Transformer 入门 -30 分钟，完成 70%",
+    referenceDate: "2026-08-25",
+    context,
+  });
+  assert.equal(invalidDuration.draft.durationMinutes, null);
+  assert.ok(invalidDuration.missingFields.includes("durationMinutes"));
+
+  for (const description of [
+    "今天学习 Transformer 入门 30 分钟，完成 -10%",
+    "今天学习 Transformer 入门 30 分钟，完成 1000%",
+    "今天学习 Transformer 入门 30 分钟，完成 50.5%",
+  ]) {
+    const result = await provider.generateProgressDraft({ description, referenceDate: "2026-08-25", context });
+    assert.equal(result.draft.completionPercent, null, description);
+    assert.ok(result.missingFields.includes("completionPercent"), description);
+  }
+});
+
+test("Mock 拒绝单位前后仍有数字或字母的部分数值令牌", async () => {
+  const duration = await provider.generateProgressDraft({
+    description: "今天学习 Transformer 入门 30 minutesx，完成 70%",
+    referenceDate: "2026-08-25",
+    context,
+  });
+  assert.equal(duration.draft.durationMinutes, null);
+
+  const completion = await provider.generateProgressDraft({
+    description: "今天学习 Transformer 入门 30 分钟，完成 70%%",
+    referenceDate: "2026-08-25",
+    context,
+  });
+  assert.equal(completion.draft.completionPercent, null);
+});
+
+test("Mock 在同主题中匹配到多个不同资料或计划时保持关联为空", async () => {
+  const result = await provider.generateProgressDraft({
+    description: "今天学习 Transformer 入门，使用注意力机制视频和 Transformer 文档，完成看完第二章与复习注意力机制 30 分钟，完成 70%",
+    referenceDate: "2026-08-25",
+    context: {
+      ...context,
+      resources: [
+        ...context.resources,
+        { id: "resource-transformer-doc", title: "Transformer 文档", topicId: "topic-transformer" },
+      ],
+      plans: [
+        ...context.plans,
+        { id: "plan-attention-review", date: "2026-08-25", topicId: "topic-transformer", task: "复习注意力机制" },
+      ],
+    },
+  });
+  assert.equal(result.draft.resourceId, null);
+  assert.equal(result.draft.planId, null);
+  assert.ok(result.missingFields.includes("resourceId"));
+  assert.ok(result.missingFields.includes("planId"));
+  assert.match(result.warnings.join(" "), /资料匹配存在歧义/);
+  assert.match(result.warnings.join(" "), /计划匹配存在歧义/);
+});

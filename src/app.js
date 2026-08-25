@@ -1427,10 +1427,17 @@ function renderProgressDraftFeedback(result) {
     completionPercent: "完成度",
     reflection: "简短总结",
   };
-  const missingLabels = result.missingFields.map((field) => fieldLabels[field]).filter(Boolean);
+  const requiredFields = ["date", "topicId", "durationMinutes", "completionPercent"];
+  const optionalAssociationFields = ["resourceId", "planId"];
+  const optionalSummaryFields = ["reflection"];
+  const requiredMissingLabels = result.missingFields.filter((field) => requiredFields.includes(field)).map((field) => fieldLabels[field]);
+  const optionalMissingLabels = result.missingFields.filter((field) => optionalAssociationFields.includes(field)).map((field) => fieldLabels[field]);
+  const optionalSummaryLabels = result.missingFields.filter((field) => optionalSummaryFields.includes(field)).map((field) => fieldLabels[field]);
   const feedback = [
     ...result.warnings,
-    ...(missingLabels.length ? [`还需补充：${missingLabels.join("、")}。`] : []),
+    ...(requiredMissingLabels.length ? [`还需补充：${requiredMissingLabels.join("、")}。`] : []),
+    ...(optionalMissingLabels.length ? [`可选关联：${optionalMissingLabels.join("、")}。`] : []),
+    ...(optionalSummaryLabels.length ? [`可选补充：${optionalSummaryLabels.join("、")}。`] : []),
   ];
 
   aiProgressPanel.classList.add("is-draft-ready");
