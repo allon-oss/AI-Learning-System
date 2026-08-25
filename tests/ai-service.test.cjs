@@ -71,6 +71,12 @@ test("校验器拒绝继承的顶层数组属性", () => {
   assert.throws(() => validateProgressDraftResult(inherited), /无效的学习进度草稿/);
 });
 
+test("校验器拒绝非枚举必需键被无关枚举键替代", () => {
+  const bypass = { missingFields: validResult.missingFields, warnings: validResult.warnings, unrelated: true };
+  Object.defineProperty(bypass, "draft", { value: validResult.draft, enumerable: false });
+  assert.throws(() => validateProgressDraftResult(bypass), /无效的学习进度草稿/);
+});
+
 test("校验器拒绝非对象结果和非法字段值", () => {
   const invalidResults = [
     null,
