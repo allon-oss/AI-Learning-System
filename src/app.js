@@ -162,6 +162,7 @@ let selectedPlanView = "today";
 let showArchivedTopics = false;
 let isProgressDraftGenerating = false;
 let isProgressDraftActive = false;
+let progressDraftRequestToken = 0;
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -607,6 +608,7 @@ progressForm.addEventListener("submit", (event) => {
   }
 
   saveItems(PROGRESS_STORAGE_KEY, progressRecords);
+  invalidateProgressDraftRequest();
   const wasDraftConfirmation = isProgressDraftActive && !isEditing;
   resetProgressForm();
   if (wasDraftConfirmation) {
@@ -1356,6 +1358,7 @@ async function generateProgressDraftFromDescription() {
   generateProgressDraftButton.disabled = true;
   aiProgressStatus.classList.remove("is-error");
   aiProgressStatus.textContent = "正在生成进度草稿……";
+  const requestToken = ++progressDraftRequestToken;
 
   try {
     const result = await window.AIService.generateProgressDraft({
@@ -1363,13 +1366,21 @@ async function generateProgressDraftFromDescription() {
       referenceDate: getToday(),
       context: { directions: learningDirections, topics: getActiveTopics(), resources, plans },
     });
+    if (requestToken !== progressDraftRequestToken) {
+      return;
+    }
     applyProgressDraft(result);
   } catch {
+    if (requestToken !== progressDraftRequestToken) {
+      return;
+    }
     aiProgressStatus.textContent = "草稿生成失败，请重试或手动填写。";
     aiProgressStatus.classList.add("is-error");
   } finally {
-    isProgressDraftGenerating = false;
-    generateProgressDraftButton.disabled = false;
+    if (requestToken === progressDraftRequestToken) {
+      isProgressDraftGenerating = false;
+      generateProgressDraftButton.disabled = false;
+    }
   }
 }
 
@@ -1435,6 +1446,7 @@ function renderProgressDraftFeedback(result) {
 }
 
 function clearProgressDraftState({ resetForm }) {
+  invalidateProgressDraftRequest();
   isProgressDraftActive = false;
   aiProgressDescription.value = "";
   aiProgressStatus.textContent = "";
@@ -1447,6 +1459,12 @@ function clearProgressDraftState({ resetForm }) {
   if (resetForm) {
     resetProgressForm();
   }
+}
+
+function invalidateProgressDraftRequest() {
+  progressDraftRequestToken += 1;
+  isProgressDraftGenerating = false;
+  generateProgressDraftButton.disabled = false;
 }
 
 function startProgressEditing(progressId) {
@@ -1969,7 +1987,8 @@ function updateProgressTopicOptions({ allowEmpty = false } = {}) {
 
   if (activeTopics.some((topic) => topic.id === currentValue)) {
     progressTopicSelect.value = currentValue;
-  } else if (allowEmpty) {
+  }
+  if (allowEmpty) {
     progressTopicSelect.value = "";
   }
 }

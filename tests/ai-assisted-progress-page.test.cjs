@@ -112,6 +112,9 @@ test("缺少匹配结果不会自动保存，用户补齐后仍可使用既有�
   assert.match(await page.locator("#aiProgressWarnings").textContent(), /无法匹配|补充/);
   assert.deepEqual(await getStoredProgress(page), []);
 
+  await page.locator("#progressSubmitButton").click();
+  assert.deepEqual(await getStoredProgress(page), []);
+
   await page.locator("#progressTopic").selectOption("topic-transformer");
   await page.locator("#progressDuration").fill("30");
   await page.locator("#progressCompletion").fill("50");
@@ -173,6 +176,62 @@ test("编辑已有进度时隐藏 AI 面板，保存仍只更新原记录", asyn
   assert.equal(saved.length, 1);
   assert.equal(saved[0].reflection, "更新后的总结");
   assert.equal(Object.hasOwn(saved[0], "learningContent"), false);
+  assert.deepEqual(pageErrors, []);
+});
+
+test("编辑已有进度会使尚未完成的生成请求失效", async (t) => {
+  const today = getLocalToday();
+  const existing = { id: "progress-existing", date: today, topicId: "topic-transformer", resourceId: "resource-attention-video", planId: "plan-chapter-2", durationMinutes: 30, completionPercent: 50, reflection: "原始总结", createdAt: `${today}T00:00:00.000Z`, updatedAt: `${today}T00:00:00.000Z` };
+  const { page, pageErrors } = await startPage(t, fixture({ progress: [existing] }));
+
+  await page.locator("#aiProgressDescription").fill("今天学习 Transformer 入门 45 分钟，完成 70%");
+  await page.evaluate(() => {
+    window.AIService.generateProgressDraft = () => new Promise((resolve) => {
+      window.__resolveProgressDraft = resolve;
+    });
+  });
+  await page.locator("#generateProgressDraftButton").click();
+  await page.locator("[data-edit-progress='progress-existing']").click();
+  await page.evaluate(() => window.__resolveProgressDraft({
+    draft: { date: new Date().toISOString().slice(0, 10), topicId: "topic-transformer", resourceId: null, planId: null, durationMinutes: 45, completionPercent: 70, reflection: "过期草稿" },
+    missingFields: ["resourceId", "planId"],
+    warnings: [],
+  }));
+  await page.waitForFunction(() => !document.querySelector("#generateProgressDraftButton").disabled);
+
+  assert.equal(await page.locator("#aiProgressPanel").isVisible(), false);
+  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存修改");
+  assert.equal(await page.locator("#progressDuration").inputValue(), "30");
+  assert.equal(await page.locator("#progressReflection").inputValue(), "原始总结");
+  assert.deepEqual(await getStoredProgress(page), [existing]);
+  assert.deepEqual(pageErrors, []);
+});
+
+test("放弃草稿会使尚未完成的重新生成请求失效", async (t) => {
+  const { page, pageErrors } = await startPage(t, fixture());
+
+  await page.locator("#aiProgressDescription").fill("今天学习 Transformer 入门 45 分钟，完成 70%");
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByRole("button", { name: "确认并保存" }).waitFor();
+  await page.evaluate(() => {
+    window.AIService.generateProgressDraft = () => new Promise((resolve) => {
+      window.__resolveProgressDraft = resolve;
+    });
+  });
+  await page.locator("#generateProgressDraftButton").click();
+  await page.locator("#discardProgressDraftButton").click();
+  await page.evaluate(() => window.__resolveProgressDraft({
+    draft: { date: new Date().toISOString().slice(0, 10), topicId: "topic-transformer", resourceId: null, planId: null, durationMinutes: 45, completionPercent: 70, reflection: "过期草稿" },
+    missingFields: ["resourceId", "planId"],
+    warnings: [],
+  }));
+  await page.waitForFunction(() => !document.querySelector("#generateProgressDraftButton").disabled);
+
+  assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
+  assert.equal(await page.locator("#discardProgressDraftButton").isVisible(), false);
+  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存进度");
+  assert.equal(await page.locator("#progressDuration").inputValue(), "");
+  assert.deepEqual(await getStoredProgress(page), []);
   assert.deepEqual(pageErrors, []);
 });
 
