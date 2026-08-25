@@ -249,6 +249,21 @@
         </div>
       </section>
 
+      <section id="aiProgressPanel" class="panel ai-progress-panel" aria-labelledby="aiProgressTitle">
+        <div class="panel-heading">
+          <h2 id="aiProgressTitle">AI 辅助记录</h2>
+          <p>用一段话描述本次学习，系统会生成可修改的进度草稿；确认前不会保存。</p>
+        </div>
+        <label for="aiProgressDescription">本次学习描述</label>
+        <textarea id="aiProgressDescription" rows="5" placeholder="例如：今天学习 Transformer 入门 45 分钟，完成 70%……"></textarea>
+        <div class="form-actions">
+          <button id="generateProgressDraftButton" class="primary-button" type="button">生成进度草稿</button>
+          <button id="discardProgressDraftButton" class="secondary-button hidden" type="button">放弃草稿</button>
+        </div>
+        <p id="aiProgressStatus" class="form-message" role="status" aria-live="polite"></p>
+        <ul id="aiProgressWarnings" class="ai-progress-warnings hidden" aria-live="polite"></ul>
+      </section>
+
       <section id="progressFormPanel" class="panel" aria-label="新增学习进度记录">
         <div class="panel-heading">
           <h2 id="progressFormTitle">新增进度记录</h2>
@@ -377,6 +392,8 @@
     </main>
 
     <script src="src/data-model.js"></script>
+    <script src="src/mock-ai-provider.js"></script>
+    <script src="src/ai-service.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>

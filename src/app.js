@@ -138,6 +138,10 @@ if (!window.LearningDataModel) {
   throw new Error("学习数据模块加载失败，请刷新页面后重试。");
 }
 
+if (!window.AIService) {
+  throw new Error("AI 服务模块加载失败，请刷新页面后重试。");
+}
+
 let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, defaultTopics));
 let learningDirections = window.LearningDataModel.normalizeLearningDirections(loadItems(LEARNING_DIRECTION_STORAGE_KEY, []));
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
@@ -156,6 +160,8 @@ let editingNoteId = "";
 let editingProgressId = "";
 let selectedPlanView = "today";
 let showArchivedTopics = false;
+let isProgressDraftGenerating = false;
+let isProgressDraftActive = false;
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -234,6 +240,15 @@ const progressSaveMessage = document.querySelector("#progressSaveMessage");
 const progressOverview = document.querySelector("#progressOverview");
 const progressSummary = document.querySelector("#progressSummary");
 const progressList = document.querySelector("#progressList");
+const aiProgressPanel = document.querySelector("#aiProgressPanel");
+const aiProgressDescription = document.querySelector("#aiProgressDescription");
+const generateProgressDraftButton = document.querySelector("#generateProgressDraftButton");
+const discardProgressDraftButton = document.querySelector("#discardProgressDraftButton");
+const aiProgressStatus = document.querySelector("#aiProgressStatus");
+const aiProgressWarnings = document.querySelector("#aiProgressWarnings");
+const progressDuration = document.querySelector("#progressDuration");
+const progressCompletion = document.querySelector("#progressCompletion");
+const progressReflection = document.querySelector("#progressReflection");
 
 showFormButton.addEventListener("click", () => {
   openTopicForm();
@@ -394,6 +409,9 @@ progressDate.addEventListener("change", () => {
 cancelNoteEditButton.addEventListener("click", resetNoteForm);
 
 cancelProgressEditButton.addEventListener("click", resetProgressForm);
+
+generateProgressDraftButton.addEventListener("click", generateProgressDraftFromDescription);
+discardProgressDraftButton.addEventListener("click", () => clearProgressDraftState({ resetForm: true }));
 
 planForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -589,8 +607,16 @@ progressForm.addEventListener("submit", (event) => {
   }
 
   saveItems(PROGRESS_STORAGE_KEY, progressRecords);
+  const wasDraftConfirmation = isProgressDraftActive && !isEditing;
   resetProgressForm();
-  progressSaveMessage.textContent = isEditing ? "进度记录已更新。" : "进度记录已保存。";
+  if (wasDraftConfirmation) {
+    clearProgressDraftState({ resetForm: false });
+  }
+  progressSaveMessage.textContent = isEditing
+    ? "进度记录已更新。"
+    : wasDraftConfirmation
+      ? "AI 进度草稿已确认并保存。"
+      : "进度记录已保存。";
   render();
 });
 
@@ -1314,12 +1340,123 @@ function renderProgressRecordCard(progress, includeActions = false) {
   `;
 }
 
+async function generateProgressDraftFromDescription() {
+  const description = aiProgressDescription.value.trim();
+  if (!description) {
+    aiProgressStatus.textContent = "请先输入学习描述。";
+    aiProgressStatus.classList.add("is-error");
+    return;
+  }
+
+  if (isProgressDraftGenerating) {
+    return;
+  }
+
+  isProgressDraftGenerating = true;
+  generateProgressDraftButton.disabled = true;
+  aiProgressStatus.classList.remove("is-error");
+  aiProgressStatus.textContent = "正在生成进度草稿……";
+
+  try {
+    const result = await window.AIService.generateProgressDraft({
+      description,
+      referenceDate: getToday(),
+      context: { directions: learningDirections, topics: getActiveTopics(), resources, plans },
+    });
+    applyProgressDraft(result);
+  } catch {
+    aiProgressStatus.textContent = "草稿生成失败，请重试或手动填写。";
+    aiProgressStatus.classList.add("is-error");
+  } finally {
+    isProgressDraftGenerating = false;
+    generateProgressDraftButton.disabled = false;
+  }
+}
+
+function applyProgressDraft(result) {
+  const draft = result.draft;
+  editingProgressId = "";
+  progressForm.reset();
+  progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
+  progressFormTitle.textContent = "新增进度记录";
+  progressFormDescription.textContent = "可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。";
+  cancelProgressEditButton.classList.add("hidden");
+  progressSaveMessage.textContent = "";
+  progressDate.max = getToday();
+  progressDate.value = draft.date || "";
+  updateProgressTopicOptions({ allowEmpty: draft.topicId === null });
+
+  if (draft.topicId && [...progressTopicSelect.options].some((option) => option.value === draft.topicId)) {
+    progressTopicSelect.value = draft.topicId;
+  }
+
+  updateProgressRelatedOptions();
+  if (draft.resourceId && [...progressResourceSelect.options].some((option) => option.value === draft.resourceId)) {
+    progressResourceSelect.value = draft.resourceId;
+  }
+  if (draft.planId && [...progressPlanSelect.options].some((option) => option.value === draft.planId)) {
+    progressPlanSelect.value = draft.planId;
+  }
+  progressDuration.value = draft.durationMinutes ?? "";
+  progressCompletion.value = draft.completionPercent ?? "";
+  progressReflection.value = draft.reflection;
+  isProgressDraftActive = true;
+  progressSubmitButton.textContent = "确认并保存";
+  discardProgressDraftButton.classList.remove("hidden");
+  renderProgressDraftFeedback(result);
+}
+
+function renderProgressDraftFeedback(result) {
+  const fieldLabels = {
+    date: "记录日期",
+    topicId: "学习主题",
+    resourceId: "关联资料",
+    planId: "关联计划",
+    durationMinutes: "学习时长",
+    completionPercent: "完成度",
+    reflection: "简短总结",
+  };
+  const missingLabels = result.missingFields.map((field) => fieldLabels[field]).filter(Boolean);
+  const feedback = [
+    ...result.warnings,
+    ...(missingLabels.length ? [`还需补充：${missingLabels.join("、")}。`] : []),
+  ];
+
+  aiProgressPanel.classList.add("is-draft-ready");
+  aiProgressStatus.classList.remove("is-error");
+  aiProgressStatus.textContent = feedback.length ? "草稿已生成，请检查并补充后确认保存。" : "草稿已生成，请检查后确认保存。";
+  aiProgressWarnings.innerHTML = "";
+  feedback.forEach((message) => {
+    const item = document.createElement("li");
+    item.textContent = message;
+    aiProgressWarnings.appendChild(item);
+  });
+  aiProgressWarnings.classList.toggle("hidden", feedback.length === 0);
+}
+
+function clearProgressDraftState({ resetForm }) {
+  isProgressDraftActive = false;
+  aiProgressDescription.value = "";
+  aiProgressStatus.textContent = "";
+  aiProgressStatus.classList.remove("is-error");
+  aiProgressWarnings.innerHTML = "";
+  aiProgressWarnings.classList.add("hidden");
+  aiProgressPanel.classList.remove("is-draft-ready");
+  discardProgressDraftButton.classList.add("hidden");
+
+  if (resetForm) {
+    resetProgressForm();
+  }
+}
+
 function startProgressEditing(progressId) {
   const progress = progressRecords.find((item) => item.id === progressId);
   if (!progress) {
     return;
   }
 
+  clearProgressDraftState({ resetForm: false });
+  aiProgressPanel.classList.add("hidden");
   editingProgressId = progress.id;
   progressFormPanel.setAttribute("aria-label", "编辑学习进度记录");
   progressFormTitle.textContent = "编辑进度记录";
@@ -1336,9 +1473,9 @@ function startProgressEditing(progressId) {
     progressTopicSelect.value = progress.topicId;
   }
   updateProgressRelatedOptions(true, progress.resourceId || "", progress.planId || "");
-  document.querySelector("#progressDuration").value = progress.durationMinutes;
-  document.querySelector("#progressCompletion").value = progress.completionPercent;
-  document.querySelector("#progressReflection").value = progress.reflection;
+  progressDuration.value = progress.durationMinutes;
+  progressCompletion.value = progress.completionPercent;
+  progressReflection.value = progress.reflection;
   progressFormPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   document.querySelector("#progressDuration").focus();
 }
@@ -1346,6 +1483,7 @@ function startProgressEditing(progressId) {
 function resetProgressForm() {
   editingProgressId = "";
   progressForm.reset();
+  aiProgressPanel.classList.remove("hidden");
   progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
   progressFormTitle.textContent = "新增进度记录";
   progressFormDescription.textContent = "可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。";
@@ -1801,7 +1939,7 @@ function updateNoteRelatedOptions() {
   notePlanSelect.disabled = !getActiveTopics().length && !editingNoteId;
 }
 
-function updateProgressTopicOptions() {
+function updateProgressTopicOptions({ allowEmpty = false } = {}) {
   const currentValue = progressTopicSelect.value;
   const activeTopics = getActiveTopics();
   progressTopicSelect.innerHTML = "";
@@ -1816,6 +1954,12 @@ function updateProgressTopicOptions() {
 
   progressTopicSelect.disabled = false;
   progressSubmitButton.disabled = false;
+  if (allowEmpty) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "请选择学习主题";
+    progressTopicSelect.appendChild(option);
+  }
   window.LearningDataModel.getOrderedTopics(activeTopics).forEach((topic) => {
     const option = document.createElement("option");
     option.value = topic.id;
@@ -1825,6 +1969,8 @@ function updateProgressTopicOptions() {
 
   if (activeTopics.some((topic) => topic.id === currentValue)) {
     progressTopicSelect.value = currentValue;
+  } else if (allowEmpty) {
+    progressTopicSelect.value = "";
   }
 }
 

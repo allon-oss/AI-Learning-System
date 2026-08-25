@@ -222,6 +222,28 @@ textarea {
   color: #9a3a2f;
 }
 
+.ai-progress-panel {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.ai-progress-panel textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
+
+.ai-progress-warnings {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.ai-progress-panel.is-draft-ready {
+  border-color: #216e4e;
+  background: #f3fbf5;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -572,6 +594,16 @@ textarea {
 
   .direction-add-panel .form-actions {
     flex-direction: column;
+  }
+
+  .ai-progress-panel .form-actions {
+    flex-direction: column;
+  }
+
+  .ai-progress-panel textarea,
+  .ai-progress-panel button,
+  .ai-progress-warnings {
+    min-width: 0;
   }
 
   .section-title-row {
