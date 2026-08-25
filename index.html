@@ -28,13 +28,23 @@
             <input id="topicName" name="name" type="text" placeholder="例如：雅思阅读" required />
           </label>
 
-          <label>
-            学习方向
+          <div class="topic-direction-field">
+            <label for="topicDirection">学习方向</label>
             <select id="topicDirection" name="direction" required>
               <option value="AI 学习">AI 学习</option>
               <option value="雅思英语学习">雅思英语学习</option>
             </select>
-          </label>
+            <button id="showAddDirectionButton" class="small-button" type="button">新增学习方向</button>
+            <div id="addDirectionPanel" class="direction-add-panel hidden">
+              <label for="newDirectionName">学习方向名称</label>
+              <input id="newDirectionName" type="text" placeholder="例如：摄影学习" />
+              <p id="addDirectionMessage" class="form-message" aria-live="polite"></p>
+              <div class="form-actions">
+                <button id="saveDirectionButton" class="primary-button" type="button">保存方向</button>
+                <button id="cancelAddDirectionButton" class="secondary-button" type="button">取消</button>
+              </div>
+            </div>
+          </div>
 
           <label>
             父主题
