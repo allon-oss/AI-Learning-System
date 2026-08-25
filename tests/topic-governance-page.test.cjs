@@ -104,6 +104,7 @@ if (chromium) {
     await assertTopicLabelAndReadOnlyEdit(page, "[data-edit-note]", "#noteTopic", "#noteTitle", "更新后的历史笔记", "personal-learning-system-notes", "note-archived");
     await assertTopicLabelAndReadOnlyEdit(page, "[data-edit-progress]", "#progressTopic", "#progressReflection", "更新后的历史总结", "personal-learning-system-progress-records", "progress-archived");
 
+    await page.locator('[data-plan-view="history"]').click();
     assert.match(await page.locator("#planList").textContent(), /已归档/);
     await page.locator("[data-toggle-plan='plan-archived']").click();
     const plan = await getStoredItem(page, "personal-learning-system-plans", "plan-archived");
