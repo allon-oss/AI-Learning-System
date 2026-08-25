@@ -1,4 +1,35 @@
 (function attachLearningDataModel(globalScope) {
+  const DEFAULT_LEARNING_DIRECTIONS = ["AI 学习", "雅思英语学习"];
+
+  function normalizeLearningDirections(directions) {
+    const normalized = [...DEFAULT_LEARNING_DIRECTIONS];
+
+    (Array.isArray(directions) ? directions : []).forEach((direction) => {
+      const name = typeof direction === "string" ? direction.trim() : "";
+
+      if (name && !normalized.includes(name)) {
+        normalized.push(name);
+      }
+    });
+
+    return normalized;
+  }
+
+  function addLearningDirection(directions, value) {
+    const normalized = normalizeLearningDirections(directions);
+    const addedDirection = typeof value === "string" ? value.trim() : "";
+
+    if (!addedDirection) {
+      return { directions: normalized, error: "empty", addedDirection: "" };
+    }
+
+    if (normalized.includes(addedDirection)) {
+      return { directions: normalized, error: "duplicate", addedDirection: "" };
+    }
+
+    return { directions: [...normalized, addedDirection], error: null, addedDirection };
+  }
+
   function getTopicScopeKey(topic) {
     return `${topic.direction || ""}\u0000${topic.parentId || ""}`;
   }
@@ -390,6 +421,9 @@
   }
 
   const api = {
+    DEFAULT_LEARNING_DIRECTIONS,
+    normalizeLearningDirections,
+    addLearningDirection,
     normalizeTopics,
     getActiveTopics,
     getTopicDescendantIds,

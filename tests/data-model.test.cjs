@@ -304,3 +304,38 @@ test("编辑主题阻止循环和归档主题，并在更换父级后保留主�
     ["child", "AI 学习", "子说明", "2026-08-21", "已移动子主题", "学习中", "sibling", 0, "2026-08-24"],
   );
 });
+
+test("学习方向标准化保留默认项、自定义项和稳定顺序", () => {
+  const source = ["摄影学习", "AI 学习", "  摄影学习  ", null, "", "雅思英语学习"];
+
+  assert.deepEqual(model.normalizeLearningDirections(source), ["AI 学习", "雅思英语学习", "摄影学习"]);
+  assert.deepEqual(source, ["摄影学习", "AI 学习", "  摄影学习  ", null, "", "雅思英语学习"]);
+});
+
+test("异常或缺失的方向列表回退为默认方向", () => {
+  assert.deepEqual(model.normalizeLearningDirections(null), ["AI 学习", "雅思英语学习"]);
+  assert.deepEqual(model.normalizeLearningDirections({}), ["AI 学习", "雅思英语学习"]);
+});
+
+test("新增自定义方向裁剪名称且拒绝空值和重复项", () => {
+  const directions = ["AI 学习", "雅思英语学习"];
+
+  assert.deepEqual(model.addLearningDirection(directions, "  摄影学习  "), {
+    directions: ["AI 学习", "雅思英语学习", "摄影学习"],
+    error: null,
+    addedDirection: "摄影学习",
+  });
+  assert.equal(model.addLearningDirection(directions, " ").error, "empty");
+  assert.equal(model.addLearningDirection(directions, " AI 学习 ").error, "duplicate");
+  assert.deepEqual(directions, ["AI 学习", "雅思英语学习"]);
+});
+
+test("方向操作不修改已有主题和关联记录", () => {
+  const topics = [{ id: "topic-ai", direction: "AI 学习" }];
+  const resources = [{ id: "resource-ai", topicId: "topic-ai" }];
+
+  model.addLearningDirection([], "摄影学习");
+
+  assert.deepEqual(topics, [{ id: "topic-ai", direction: "AI 学习" }]);
+  assert.deepEqual(resources, [{ id: "resource-ai", topicId: "topic-ai" }]);
+});
