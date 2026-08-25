@@ -17,6 +17,8 @@
 
   function validateProgressDraftResult(result) {
     if (!result || typeof result !== "object" || Array.isArray(result)) invalidResult();
+    const resultKeys = Object.keys(result);
+    if (resultKeys.length !== 3 || ["draft", "missingFields", "warnings"].some((field) => !Object.prototype.hasOwnProperty.call(result, field))) invalidResult();
     const draft = result.draft;
     if (!draft || typeof draft !== "object" || Array.isArray(draft)) invalidResult();
     const draftKeys = Object.keys(draft);

@@ -61,6 +61,16 @@ test("校验器拒绝未知草稿键、非法缺失字段和非字符串警告",
   }
 });
 
+test("校验器拒绝顶层额外键", () => {
+  assert.throws(() => validateProgressDraftResult({ ...validResult, extra: true }), /无效的学习进度草稿/);
+});
+
+test("校验器拒绝继承的顶层数组属性", () => {
+  const inherited = Object.create({ missingFields: validResult.missingFields, warnings: validResult.warnings });
+  inherited.draft = validResult.draft;
+  assert.throws(() => validateProgressDraftResult(inherited), /无效的学习进度草稿/);
+});
+
 test("校验器拒绝非对象结果和非法字段值", () => {
   const invalidResults = [
     null,
@@ -80,4 +90,3 @@ test("浏览器环境有 MockAIProvider 时建立默认 AIService", () => {
   vm.runInNewContext(source, context);
   assert.equal(typeof context.window.AIService.generateProgressDraft, "function");
 });
-
