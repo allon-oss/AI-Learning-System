@@ -54,7 +54,7 @@
     const durations = [...description.matchAll(/(\d+(?:\.\d+)?)\s*(小时|小時|h|hours?|分钟|分鐘|min(?:ute)?s?)/gi)];
     if (durations.length) {
       const minutes = durations.reduce((sum, match) => /小时|小時|^h$|hour/i.test(match[2]) ? sum + Number(match[1]) * 60 : sum + Number(match[1]), 0);
-      draft.durationMinutes = Math.max(1, Math.round(minutes));
+      if (minutes > 0) draft.durationMinutes = Math.round(minutes);
     }
     const percent = description.match(/(?:完成|进度|達成)?\s*(\d{1,3})\s*%/);
     if (percent && Number(percent[1]) <= 100) draft.completionPercent = Number(percent[1]);
@@ -72,10 +72,12 @@
       const resourcePick = pickLongest(resources, description, (resource) => resource.title);
       if (resourcePick.value) draft.resourceId = resourcePick.value.id;
       else if (resourcePick.ambiguous) warnings.push("资料匹配存在歧义，请手动选择。");
+      else if (/资料|视频|音频|resource/i.test(description)) warnings.push("资料无法关联到当前主题，请手动选择。");
       const plans = context.plans.filter((plan) => plan && plan.topicId === draft.topicId && isValidDate(plan.date) && draft.date && plan.date <= draft.date);
       const planPick = pickLongest(plans, description, (plan) => plan.task);
       if (planPick.value) draft.planId = planPick.value.id;
       else if (planPick.ambiguous) warnings.push("计划匹配存在歧义，请手动选择。");
+      else if (/计划|任务|plan/i.test(description)) warnings.push("计划无法关联到当前主题和日期，请手动选择。");
     }
     return { draft, warnings };
   }
