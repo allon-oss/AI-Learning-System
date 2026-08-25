@@ -76,6 +76,15 @@ async function getStoredProgress(page) {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key)), progressStorageKey);
 }
 
+async function waitForControlledDraftSettlement(page) {
+  await page.waitForFunction(() => window.__oldProgressDraftSettled === true);
+  await page.evaluate(() => new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = resolve;
+    channel.port2.postMessage(null);
+  }));
+}
+
 test("生成的 AI 草稿保持可编辑，确认后才按修改值保存", async (t) => {
   const { page, pageErrors } = await startPage(t, fixture());
 
@@ -186,8 +195,12 @@ test("编辑已有进度会使尚未完成的生成请求失效", async (t) => {
 
   await page.locator("#aiProgressDescription").fill("今天学习 Transformer 入门 45 分钟，完成 70%");
   await page.evaluate(() => {
-    window.AIService.generateProgressDraft = () => new Promise((resolve) => {
+    window.__oldProgressDraftSettled = false;
+    const oldRequest = new Promise((resolve) => {
       window.__resolveProgressDraft = resolve;
+    });
+    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+      window.__oldProgressDraftSettled = true;
     });
   });
   await page.locator("#generateProgressDraftButton").click();
@@ -197,7 +210,7 @@ test("编辑已有进度会使尚未完成的生成请求失效", async (t) => {
     missingFields: ["resourceId", "planId"],
     warnings: [],
   }));
-  await page.waitForFunction(() => !document.querySelector("#generateProgressDraftButton").disabled);
+  await waitForControlledDraftSettlement(page);
 
   assert.equal(await page.locator("#aiProgressPanel").isVisible(), false);
   assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存修改");
@@ -214,8 +227,12 @@ test("放弃草稿会使尚未完成的重新生成请求失效", async (t) => {
   await page.locator("#generateProgressDraftButton").click();
   await page.getByRole("button", { name: "确认并保存" }).waitFor();
   await page.evaluate(() => {
-    window.AIService.generateProgressDraft = () => new Promise((resolve) => {
+    window.__oldProgressDraftSettled = false;
+    const oldRequest = new Promise((resolve) => {
       window.__resolveProgressDraft = resolve;
+    });
+    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+      window.__oldProgressDraftSettled = true;
     });
   });
   await page.locator("#generateProgressDraftButton").click();
@@ -225,9 +242,39 @@ test("放弃草稿会使尚未完成的重新生成请求失效", async (t) => {
     missingFields: ["resourceId", "planId"],
     warnings: [],
   }));
-  await page.waitForFunction(() => !document.querySelector("#generateProgressDraftButton").disabled);
+  await waitForControlledDraftSettlement(page);
 
   assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
+  assert.equal(await page.locator("#discardProgressDraftButton").isVisible(), false);
+  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存进度");
+  assert.equal(await page.locator("#progressDuration").inputValue(), "");
+  assert.deepEqual(await getStoredProgress(page), []);
+  assert.deepEqual(pageErrors, []);
+});
+
+test("放弃草稿后旧请求拒绝不会显示错误或重新激活草稿", async (t) => {
+  const { page, pageErrors } = await startPage(t, fixture());
+
+  await page.locator("#aiProgressDescription").fill("今天学习 Transformer 入门 45 分钟，完成 70%");
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByRole("button", { name: "确认并保存" }).waitFor();
+  await page.evaluate(() => {
+    window.__oldProgressDraftSettled = false;
+    const oldRequest = new Promise((resolve, reject) => {
+      window.__rejectProgressDraft = reject;
+    });
+    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+      window.__oldProgressDraftSettled = true;
+    });
+  });
+  await page.locator("#generateProgressDraftButton").click();
+  await page.locator("#discardProgressDraftButton").click();
+  await page.evaluate(() => window.__rejectProgressDraft(new Error("stale request failed")));
+  await waitForControlledDraftSettlement(page);
+
+  assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
+  assert.equal(await page.locator("#aiProgressStatus").textContent(), "");
+  assert.equal(await page.locator("#aiProgressStatus").evaluate((status) => status.classList.contains("is-error")), false);
   assert.equal(await page.locator("#discardProgressDraftButton").isVisible(), false);
   assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存进度");
   assert.equal(await page.locator("#progressDuration").inputValue(), "");
@@ -240,9 +287,13 @@ test("生成期间禁用按钮以避免重复调用", async (t) => {
   await page.locator("#aiProgressDescription").fill("今天学习 Transformer 入门 45 分钟，完成 70%");
   await page.evaluate(() => {
     window.__progressDraftCalls = 0;
-    window.AIService.generateProgressDraft = () => new Promise((resolve) => {
+    window.__oldProgressDraftSettled = false;
+    const oldRequest = new Promise((resolve) => {
       window.__progressDraftCalls += 1;
       window.__resolveProgressDraft = resolve;
+    });
+    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+      window.__oldProgressDraftSettled = true;
     });
   });
 
@@ -257,6 +308,7 @@ test("生成期间禁用按钮以避免重复调用", async (t) => {
     missingFields: ["resourceId", "planId"],
     warnings: [],
   }));
+  await waitForControlledDraftSettlement(page);
   await page.getByRole("button", { name: "确认并保存" }).waitFor();
 
   assert.deepEqual(pageErrors, []);
