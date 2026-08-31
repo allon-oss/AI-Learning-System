@@ -203,10 +203,13 @@ const planDate = document.querySelector("#planDate");
 const planForm = document.querySelector("#planForm");
 const planTopicSelect = document.querySelector("#planTopic");
 const planResourceSelect = document.querySelector("#planResource");
+const planEntryModeSelect = document.querySelector("#planEntryMode");
 const planScheduleDate = document.querySelector("#planScheduleDate");
+const planDateError = document.querySelector("#planDateError");
 const planEstimatedMinutes = document.querySelector("#planEstimatedMinutes");
 const planPriority = document.querySelector("#planPriority");
 const planTaskInput = document.querySelector("#planTask");
+const planSubmitButton = planForm.querySelector('button[type="submit"]');
 const planListHeading = document.querySelector("#planListHeading");
 const planViewTabs = document.querySelector(".plan-view-tabs");
 const planSummary = document.querySelector("#planSummary");
@@ -396,6 +399,9 @@ resourceForm.addEventListener("submit", (event) => {
 });
 
 planTopicSelect.addEventListener("change", updatePlanResourceOptions);
+planEntryModeSelect.addEventListener("change", () => setPlanDateDefaults({ resetInvalidDate: true }));
+planScheduleDate.addEventListener("focus", () => setPlanDateDefaults());
+planScheduleDate.addEventListener("input", () => setPlanDateDefaults());
 
 noteTopicSelect.addEventListener("change", updateNoteRelatedOptions);
 
@@ -404,7 +410,16 @@ progressTopicSelect.addEventListener("change", () => {
 });
 
 progressDate.addEventListener("change", () => {
+  setProgressDateDefaults();
   updateProgressRelatedOptions(Boolean(editingProgressId));
+});
+progressDate.addEventListener("focus", setProgressDateDefaults);
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    setPlanDateDefaults();
+    setProgressDateDefaults();
+  }
 });
 
 cancelNoteEditButton.addEventListener("click", resetNoteForm);
@@ -421,6 +436,7 @@ planForm.addEventListener("submit", (event) => {
   const topicId = formData.get("topicId");
   const task = formData.get("task").trim();
   const date = formData.get("date");
+  const isBackfilled = formData.get("entryMode") === "backfill";
   const estimatedMinutesInput = formData.get("estimatedMinutes").trim();
   const estimatedMinutes = estimatedMinutesInput === "" ? null : Number(estimatedMinutesInput);
   const priority = formData.get("priority");
@@ -434,8 +450,8 @@ planForm.addEventListener("submit", (event) => {
     return;
   }
 
-  if (!["today", "future"].includes(window.LearningDataModel.classifyPlanDate({ date, isCompleted: false }, getToday()))) {
-    planSaveMessage.textContent = "计划日期只能选择今天或未来日期。";
+  if (!validatePlanScheduleDate()) {
+    planSaveMessage.textContent = planDateError.textContent || "请选择符合记录方式的有效计划日期。";
     return;
   }
 
@@ -454,6 +470,7 @@ planForm.addEventListener("submit", (event) => {
     priority: ["高", "中", "低"].includes(priority) ? priority : "中",
     estimatedMinutes,
     isCompleted: false,
+    isBackfilled,
     createdAt: new Date().toISOString(),
   };
 
@@ -463,9 +480,9 @@ planForm.addEventListener("submit", (event) => {
   setPlanDateDefaults();
   planTopicSelect.value = topicId;
   updatePlanResourceOptions();
-  selectedPlanView = date === getToday() ? "today" : "future";
+  selectedPlanView = isBackfilled ? "history" : date === getToday() ? "today" : "future";
   render();
-  planSaveMessage.textContent = "学习计划已添加并保存。";
+  planSaveMessage.textContent = isBackfilled ? "历史补录计划已添加并保存。" : "学习计划已添加并保存。";
 });
 
 noteForm.addEventListener("submit", (event) => {
@@ -1071,7 +1088,7 @@ function renderResourceDetail() {
 
 function renderPlanHeader() {
   setPlanDateDefaults();
-  planDate.textContent = `今天是 ${getToday()}，可以安排今天或未来的学习计划。`;
+  planDate.textContent = `今天是 ${getToday()}。普通计划用于今天或未来，过去遗漏的安排可选择“历史补录”。`;
 }
 
 function renderPlanList() {
@@ -1110,7 +1127,10 @@ function renderPlanList() {
       <div class="plan-card-main">
         <span class="plan-check">${plan.isCompleted ? "✓" : "□"}</span>
         <div>
-          <h3>${escapeHtml(plan.task)}</h3>
+          <div class="plan-card-title-row">
+            <h3>${escapeHtml(plan.task)}</h3>
+            ${plan.isBackfilled ? '<span class="status-pill backfill-status">事后补录</span>' : ""}
+          </div>
           <p class="plan-status-text">${getPlanStatusLabel(plan, classification)}</p>
           <p>${getPlanDateLabel(plan, classification)}</p>
           <p>优先级：${escapeHtml(plan.priority)}${plan.estimatedMinutes ? ` · 预计时长：${plan.estimatedMinutes} 分钟` : ""}</p>
@@ -1877,13 +1897,12 @@ function updatePlanTopicOptions() {
     setEmptyTopicOption(planTopicSelect);
     planResourceSelect.disabled = true;
     planTaskInput.disabled = true;
-    planForm.querySelector('button[type="submit"]').disabled = true;
+    updatePlanSubmitAvailability();
     return;
   }
 
   planTopicSelect.disabled = false;
   planTaskInput.disabled = false;
-  planForm.querySelector('button[type="submit"]').disabled = false;
 
   window.LearningDataModel.getOrderedTopics(activeTopics).forEach((topic) => {
     const option = document.createElement("option");
@@ -1895,6 +1914,8 @@ function updatePlanTopicOptions() {
   if (activeTopics.some((topic) => topic.id === currentValue)) {
     planTopicSelect.value = currentValue;
   }
+
+  updatePlanSubmitAvailability();
 }
 
 function updatePlanResourceOptions() {
@@ -2074,20 +2095,71 @@ function getTopicPath(topic) {
   return parent ? `${topic.direction} > ${parent.name} > ${topic.name}` : `${topic.direction} > ${topic.name}`;
 }
 
-function getToday() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
+function getLocalDate(dayOffset = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-function setPlanDateDefaults() {
+function getToday() {
+  return getLocalDate();
+}
+
+function isPlanBackfillMode() {
+  return planEntryModeSelect.value === "backfill";
+}
+
+function setPlanDateDefaults({ resetInvalidDate = false } = {}) {
   const today = getToday();
-  planScheduleDate.min = today;
-  if (!planScheduleDate.value) {
-    planScheduleDate.value = today;
+  const yesterday = getLocalDate(-1);
+
+  if (isPlanBackfillMode()) {
+    planScheduleDate.removeAttribute("min");
+    planScheduleDate.max = yesterday;
+    if (!planScheduleDate.value || (resetInvalidDate && planScheduleDate.value >= today)) {
+      planScheduleDate.value = yesterday;
+    }
+  } else {
+    planScheduleDate.min = today;
+    planScheduleDate.removeAttribute("max");
+    if (!planScheduleDate.value || (resetInvalidDate && planScheduleDate.value < today)) {
+      planScheduleDate.value = today;
+    }
   }
+
+  validatePlanScheduleDate();
+}
+
+function isAllowedPlanScheduleDate() {
+  const date = planScheduleDate.value;
+  const today = getToday();
+
+  if (!isValidPlanDateValue(date)) {
+    return false;
+  }
+
+  return isPlanBackfillMode() ? date < today : date >= today;
+}
+
+function updatePlanSubmitAvailability() {
+  planSubmitButton.disabled = !getActiveTopics().length || !isAllowedPlanScheduleDate();
+}
+
+function validatePlanScheduleDate() {
+  const isAllowedDate = isAllowedPlanScheduleDate();
+  const message = !planScheduleDate.value || isAllowedDate
+    ? ""
+    : isPlanBackfillMode()
+      ? "历史补录只能选择过去日期；今天或未来请使用“普通计划”。"
+      : "普通计划只能选择今天或未来；如需补记过去，请选择“历史补录”。";
+  planScheduleDate.setCustomValidity(message);
+  planScheduleDate.setAttribute("aria-invalid", String(Boolean(planScheduleDate.value) && !isAllowedDate));
+  planDateError.textContent = message;
+  updatePlanSubmitAvailability();
+  return isAllowedDate;
 }
 
 function setProgressDateDefaults() {

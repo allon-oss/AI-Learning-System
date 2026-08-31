@@ -133,16 +133,16 @@ test("资料今日任务摘要只统计当天和指定资料", () => {
 test("计划标准化为旧记录补齐可选字段且不改写原始日期", () => {
   const legacyPlans = [
     { id: "legacy", date: "not-a-date", task: "旧任务" },
-    { id: "valid", date: "2026-08-24", priority: "高", estimatedMinutes: 45 },
-    { id: "invalid-fields", date: "2026-08-25", priority: "紧急", estimatedMinutes: 0 },
+    { id: "valid", date: "2026-08-24", priority: "高", estimatedMinutes: 45, isBackfilled: true },
+    { id: "invalid-fields", date: "2026-08-25", priority: "紧急", estimatedMinutes: 0, isBackfilled: "true" },
   ];
 
   const normalized = model.normalizePlans(legacyPlans);
 
   assert.deepEqual(normalized, [
-    { id: "legacy", date: "not-a-date", task: "旧任务", priority: "中", estimatedMinutes: null },
-    { id: "valid", date: "2026-08-24", priority: "高", estimatedMinutes: 45 },
-    { id: "invalid-fields", date: "2026-08-25", priority: "中", estimatedMinutes: null },
+    { id: "legacy", date: "not-a-date", task: "旧任务", priority: "中", estimatedMinutes: null, isBackfilled: false },
+    { id: "valid", date: "2026-08-24", priority: "高", estimatedMinutes: 45, isBackfilled: true },
+    { id: "invalid-fields", date: "2026-08-25", priority: "中", estimatedMinutes: null, isBackfilled: false },
   ]);
   assert.equal(legacyPlans[0].date, "not-a-date");
   assert.notEqual(normalized[0], legacyPlans[0]);
@@ -155,6 +155,13 @@ test("计划日期按今天、未来、逾期和历史分类", () => {
   assert.equal(model.classifyPlanDate({ date: "2026-08-23", isCompleted: false }, today), "future");
   assert.equal(model.classifyPlanDate({ date: "2026-08-21", isCompleted: false }, today), "overdue");
   assert.equal(model.classifyPlanDate({ date: "2026-08-21", isCompleted: true }, today), "history");
+});
+
+test("事后补录的过去计划即使未完成也归入历史且普通旧计划仍为逾期", () => {
+  const today = "2026-08-30";
+
+  assert.equal(model.classifyPlanDate({ date: "2026-08-29", isCompleted: false, isBackfilled: true }, today), "history");
+  assert.equal(model.classifyPlanDate({ date: "2026-08-29", isCompleted: false, isBackfilled: false }, today), "overdue");
 });
 
 test("无效旧日期计划归入历史而不是被丢弃", () => {

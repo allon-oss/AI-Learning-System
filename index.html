@@ -183,7 +183,7 @@
         <section class="panel">
           <div class="panel-heading">
             <h2>新增学习计划</h2>
-            <p>选择一个学习主题，资料可以不选；计划日期只能选择今天或未来。</p>
+            <p>普通计划用于今天或未来；如果忘记记录过去的安排，请主动选择“历史补录”。</p>
           </div>
           <form id="planForm" class="topic-form">
             <label>
@@ -196,10 +196,19 @@
               <select id="planResource" name="resourceId"></select>
             </label>
 
-            <label>
-              计划日期
-              <input id="planScheduleDate" name="date" type="date" required />
-            </label>
+            <div class="plan-entry-mode-field">
+              <label for="planEntryMode">记录方式</label>
+              <select id="planEntryMode" name="entryMode" required>
+                <option value="scheduled">普通计划（今天或未来）</option>
+                <option value="backfill">历史补录（事后记录）</option>
+              </select>
+            </div>
+
+            <div class="plan-date-field">
+              <label for="planScheduleDate">计划日期</label>
+              <input id="planScheduleDate" name="date" type="date" aria-describedby="planDateError" required />
+              <p id="planDateError" class="form-message is-error" role="alert" aria-live="polite"></p>
+            </div>
 
             <label>
               预计时长（分钟，可选）

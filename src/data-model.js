@@ -368,6 +368,7 @@
       ...plan,
       priority: ["高", "中", "低"].includes(plan.priority) ? plan.priority : "中",
       estimatedMinutes: Number.isInteger(plan.estimatedMinutes) && plan.estimatedMinutes > 0 ? plan.estimatedMinutes : null,
+      isBackfilled: plan.isBackfilled === true,
     }));
   }
 
@@ -394,7 +395,7 @@
       return "future";
     }
 
-    return plan.isCompleted ? "history" : "overdue";
+    return plan.isBackfilled || plan.isCompleted ? "history" : "overdue";
   }
 
   function getEligiblePlansForProgress(plans, topicId, progressDate) {
