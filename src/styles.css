@@ -465,6 +465,72 @@ textarea {
   margin: 12px 0;
 }
 
+.plan-entry-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.plan-entry-tabs .small-button[aria-selected="true"] {
+  background: #216e4e;
+  color: white;
+}
+
+.batch-plan-form,
+.batch-plan-groups,
+.batch-plan-group,
+.batch-plan-task-list,
+.batch-plan-task-row,
+.batch-plan-task-details {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.batch-plan-date {
+  margin-bottom: 0;
+  color: #405148;
+  font-weight: 700;
+}
+
+.batch-plan-group,
+.batch-plan-task-row {
+  border: 1px solid #e1dbcf;
+  border-radius: 8px;
+  padding: 14px;
+  background: white;
+}
+
+.batch-plan-group-header,
+.batch-plan-task-header,
+.batch-plan-group-actions,
+.batch-plan-task-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-plan-group-header h3,
+.batch-plan-task-header h4 {
+  margin: 0 auto 0 0;
+}
+
+.batch-plan-task-details {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.batch-plan-form.hidden,
+.batch-plan-task-details.hidden {
+  display: none;
+}
+
+.batch-plan-form .form-actions {
+  margin-top: 4px;
+}
+
 .plan-view-tabs .small-button.selected {
   background: #216e4e;
   color: white;
@@ -611,7 +677,8 @@ textarea {
 
   .topic-form,
   .detail-grid,
-  .compact-grid {
+  .compact-grid,
+  .batch-plan-task-details {
     grid-template-columns: 1fr;
   }
 
@@ -636,5 +703,21 @@ textarea {
 
   .topic-detail {
     position: static;
+  }
+
+  .batch-plan-form .form-actions,
+  .batch-plan-group-actions,
+  .batch-plan-task-actions {
+    align-items: stretch;
+  }
+
+  .batch-plan-form .form-actions {
+    flex-direction: column;
+  }
+
+  .batch-plan-form button,
+  .batch-plan-form input,
+  .batch-plan-form select {
+    min-width: 0;
   }
 }

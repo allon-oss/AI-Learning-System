@@ -3,6 +3,130 @@ const assert = require("node:assert/strict");
 
 const model = require("../src/data-model.js");
 
+test("批量计划校验按主题和任务顺序构建规范化条目且不修改输入", () => {
+  const groups = [
+    {
+      clientId: "group-ai",
+      topicId: "topic-ai",
+      tasks: [
+        { clientId: "task-system", task: "  测试学习系统  ", resourceId: "resource-ai", estimatedMinutes: "45", priority: "高" },
+        { clientId: "task-rag", task: "学 RAG", resourceId: "", estimatedMinutes: "", priority: "中" },
+      ],
+    },
+    {
+      clientId: "group-ielts",
+      topicId: "topic-ielts",
+      tasks: [
+        { clientId: "task-words", task: "背单词", resourceId: "resource-ielts", estimatedMinutes: "20", priority: "低" },
+      ],
+    },
+  ];
+  const topics = [
+    { id: "topic-ai", direction: "AI 学习", parentId: "", sortOrder: 0 },
+    { id: "topic-ielts", direction: "雅思英语学习", parentId: "", sortOrder: 0 },
+  ];
+  const resources = [
+    { id: "resource-ai", topicId: "topic-ai", title: "系统资料" },
+    { id: "resource-ielts", topicId: "topic-ielts", title: "词汇资料" },
+  ];
+  const sourceGroups = structuredClone(groups);
+  const sourceTopics = structuredClone(topics);
+  const sourceResources = structuredClone(resources);
+
+  const result = model.validateBatchPlanGroups(groups, topics, resources);
+
+  assert.deepEqual(result, {
+    entries: [
+      { groupId: "group-ai", taskId: "task-system", topicId: "topic-ai", task: "测试学习系统", resourceId: "resource-ai", estimatedMinutes: 45, priority: "高" },
+      { groupId: "group-ai", taskId: "task-rag", topicId: "topic-ai", task: "学 RAG", resourceId: null, estimatedMinutes: null, priority: "中" },
+      { groupId: "group-ielts", taskId: "task-words", topicId: "topic-ielts", task: "背单词", resourceId: "resource-ielts", estimatedMinutes: 20, priority: "低" },
+    ],
+    errors: [],
+  });
+  assert.deepEqual(groups, sourceGroups);
+  assert.deepEqual(topics, sourceTopics);
+  assert.deepEqual(resources, sourceResources);
+});
+
+test("批量计划校验拒绝所有边界无效草稿且不泄漏有效条目", () => {
+  const activeTopics = [{ id: "topic-ai", direction: "AI 学习", parentId: "", sortOrder: 0 }];
+  const archivedTopic = { id: "topic-old", direction: "AI 学习", parentId: "", sortOrder: 1, isArchived: true };
+  const resources = [{ id: "resource-ai", topicId: "topic-ai" }, { id: "resource-other", topicId: "topic-other" }];
+  const validTask = { clientId: "task-1", task: "有效任务", resourceId: "", estimatedMinutes: "", priority: "中" };
+  const cases = [
+    ["no selected topic", [{ clientId: "group-1", topicId: "", tasks: [validTask] }], activeTopics, "topicId"],
+    ["topic archived", [{ clientId: "group-1", topicId: "topic-old", tasks: [validTask] }], [...activeTopics, archivedTopic], "topicId"],
+    ["duplicated topic group", [{ clientId: "group-1", topicId: "topic-ai", tasks: [validTask] }, { clientId: "group-2", topicId: "topic-ai", tasks: [validTask] }], activeTopics, "topicId"],
+    ["blank task", [{ clientId: "group-1", topicId: "topic-ai", tasks: [{ ...validTask, task: "  " }] }], activeTopics, "task"],
+    ["resource from another topic", [{ clientId: "group-1", topicId: "topic-ai", tasks: [{ ...validTask, resourceId: "resource-other" }] }], activeTopics, "resourceId"],
+    ["missing resource", [{ clientId: "group-1", topicId: "topic-ai", tasks: [{ ...validTask, resourceId: "gone" }] }], activeTopics, "resourceId"],
+    ["zero minutes", [{ clientId: "group-1", topicId: "topic-ai", tasks: [{ ...validTask, estimatedMinutes: "0" }] }], activeTopics, "estimatedMinutes"],
+    ["fractional minutes", [{ clientId: "group-1", topicId: "topic-ai", tasks: [{ ...validTask, estimatedMinutes: "1.5" }] }], activeTopics, "estimatedMinutes"],
+    ["illegal priority", [{ clientId: "group-1", topicId: "topic-ai", tasks: [{ ...validTask, priority: "紧急" }] }], activeTopics, "priority"],
+    ["non-array groups", {}, activeTopics, "groups"],
+    ["empty groups", [], activeTopics, "groups"],
+    ["group with zero tasks", [{ clientId: "group-1", topicId: "topic-ai", tasks: [] }], activeTopics, "tasks"],
+  ];
+
+  for (const [name, groups, topics, field] of cases) {
+    const sourceGroups = structuredClone(groups);
+    const sourceTopics = structuredClone(topics);
+    const sourceResources = structuredClone(resources);
+    const result = model.validateBatchPlanGroups(groups, topics, resources);
+    assert.deepEqual(result.entries, [], name);
+    assert.ok(result.errors.some((error) => error.field === field), name);
+    assert.deepEqual(groups, sourceGroups, name);
+    assert.deepEqual(topics, sourceTopics, name);
+    assert.deepEqual(resources, sourceResources, name);
+  }
+});
+
+test("批量计划校验安全拒绝缺失与畸形的组和任务对象", () => {
+  const topics = [{ id: "topic-ai", direction: "AI 学习", parentId: "", sortOrder: 0 }];
+  const cases = [
+    ["missing groups", undefined, ["groups"]],
+    ["null groups", null, ["groups"]],
+    ["invalid groups object", {}, ["groups"]],
+    ["missing tasks", [{ clientId: "group-1", topicId: "topic-ai" }], ["tasks"]],
+    ["invalid tasks object", [{ clientId: "group-1", topicId: "topic-ai", tasks: {} }], ["tasks"]],
+    ["malformed group", [null], ["topicId", "tasks"]],
+    ["malformed null task", [{ clientId: "group-1", topicId: "topic-ai", tasks: [null] }], ["task", "priority"]],
+    ["malformed numeric task", [{ clientId: "group-1", topicId: "topic-ai", tasks: [42] }], ["task", "priority"]],
+  ];
+
+  for (const [name, groups, expectedFields] of cases) {
+    const original = structuredClone(groups);
+    let result;
+    assert.doesNotThrow(() => {
+      result = model.validateBatchPlanGroups(groups, topics, []);
+    }, name);
+    assert.deepEqual(result.entries, [], name);
+    assert.deepEqual(result.errors.map((error) => error.field), expectedFields, name);
+    assert.deepEqual(groups, original, name);
+  }
+});
+
+test("批量计划记录构建器按顺序生成确定性 ID 且不读取时钟", () => {
+  const entries = [
+    { groupId: "group-ai", taskId: "task-system", topicId: "topic-ai", task: "测试学习系统", resourceId: "resource-ai", estimatedMinutes: 45, priority: "高" },
+    { groupId: "group-ai", taskId: "task-rag", topicId: "topic-ai", task: "学 RAG", resourceId: null, estimatedMinutes: null, priority: "中" },
+    { groupId: "group-ielts", taskId: "task-words", topicId: "topic-ielts", task: "背单词", resourceId: "resource-ielts", estimatedMinutes: 20, priority: "低" },
+  ];
+  const metadata = { date: "2026-08-31", createdAt: "2026-08-31T02:00:00.000Z", batchToken: "1725070000000" };
+
+  assert.deepEqual(model.createBatchPlanRecords(entries, metadata), [
+    { id: "plan-1725070000000-1", date: "2026-08-31", createdAt: "2026-08-31T02:00:00.000Z", topicId: "topic-ai", resourceId: "resource-ai", task: "测试学习系统", priority: "高", estimatedMinutes: 45, isCompleted: false, isBackfilled: false },
+    { id: "plan-1725070000000-2", date: "2026-08-31", createdAt: "2026-08-31T02:00:00.000Z", topicId: "topic-ai", resourceId: null, task: "学 RAG", priority: "中", estimatedMinutes: null, isCompleted: false, isBackfilled: false },
+    { id: "plan-1725070000000-3", date: "2026-08-31", createdAt: "2026-08-31T02:00:00.000Z", topicId: "topic-ielts", resourceId: "resource-ielts", task: "背单词", priority: "低", estimatedMinutes: 20, isCompleted: false, isBackfilled: false },
+  ]);
+  assert.deepEqual(model.createBatchPlanRecords({}, metadata), []);
+  assert.deepEqual(model.createBatchPlanRecords(entries, { ...metadata, date: "2026-02-30" }), []);
+  assert.deepEqual(model.createBatchPlanRecords(entries, { ...metadata, batchToken: "" }), []);
+  assert.deepEqual(model.createBatchPlanRecords(entries, { ...metadata, createdAt: undefined }), []);
+  assert.deepEqual(model.createBatchPlanRecords(entries, { ...metadata, createdAt: "" }), []);
+  assert.deepEqual(model.createBatchPlanRecords(entries, { ...metadata, createdAt: "not-a-date" }), []);
+});
+
 test("旧主题按当前同级顺序获得连续 sortOrder", () => {
   const topics = [
     { id: "ai-foundation", direction: "AI 学习", parentId: "" },

@@ -215,6 +215,15 @@ const planViewTabs = document.querySelector(".plan-view-tabs");
 const planSummary = document.querySelector("#planSummary");
 const planSaveMessage = document.querySelector("#planSaveMessage");
 const planList = document.querySelector("#planList");
+const planEntryTabs = document.querySelector(".plan-entry-tabs");
+const batchPlanForm = document.querySelector("#batchPlanForm");
+const batchPlanDate = document.querySelector("#batchPlanDate");
+const batchPlanGroups = document.querySelector("#batchPlanGroups");
+const addBatchPlanGroupButton = document.querySelector("#addBatchPlanGroupButton");
+const batchPlanSaveMessage = document.querySelector("#batchPlanSaveMessage");
+let batchGroupCounter = 0;
+let batchTaskCounter = 0;
+let planEntryFormMode = "single";
 
 const noteForm = document.querySelector("#noteForm");
 const noteFormPanel = document.querySelector("#noteFormPanel");
@@ -403,6 +412,44 @@ planEntryModeSelect.addEventListener("change", () => setPlanDateDefaults({ reset
 planScheduleDate.addEventListener("focus", () => setPlanDateDefaults());
 planScheduleDate.addEventListener("input", () => setPlanDateDefaults());
 
+batchPlanForm.noValidate = true;
+planEntryTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-plan-entry-mode]");
+  if (button) {
+    setPlanEntryFormMode(button.dataset.planEntryMode);
+  }
+});
+
+batchPlanForm.addEventListener("focusin", syncBatchPlanDate);
+batchPlanForm.addEventListener("submit", submitBatchPlans);
+batchPlanForm.addEventListener("change", (event) => {
+  if (event.target.matches("[data-batch-topic]")) {
+    refreshBatchPlanOptions();
+  }
+});
+batchPlanForm.addEventListener("click", (event) => {
+  const addTaskButton = event.target.closest("[data-add-batch-task]");
+  const removeTaskButton = event.target.closest("[data-remove-batch-task]");
+  const removeGroupButton = event.target.closest("[data-remove-batch-group]");
+  const detailsButton = event.target.closest("[data-toggle-batch-task-details]");
+  if (addTaskButton) return addBatchTaskRow(addTaskButton.closest("[data-batch-group]"));
+  if (removeTaskButton) {
+    removeTaskButton.closest("[data-batch-task-row]").remove();
+    return refreshBatchPlanOptions();
+  }
+  if (removeGroupButton) {
+    removeGroupButton.closest("[data-batch-group]").remove();
+    return refreshBatchPlanOptions();
+  }
+  if (detailsButton) {
+    const details = document.getElementById(detailsButton.getAttribute("aria-controls"));
+    const expanded = detailsButton.getAttribute("aria-expanded") === "true";
+    detailsButton.setAttribute("aria-expanded", String(!expanded));
+    details.classList.toggle("hidden", expanded);
+  }
+});
+addBatchPlanGroupButton.addEventListener("click", () => addBatchPlanGroup());
+
 noteTopicSelect.addEventListener("change", updateNoteRelatedOptions);
 
 progressTopicSelect.addEventListener("change", () => {
@@ -419,6 +466,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     setPlanDateDefaults();
     setProgressDateDefaults();
+    syncBatchPlanDate();
   }
 });
 
@@ -768,6 +816,297 @@ function saveItems(storageKey, items) {
   localStorage.setItem(storageKey, JSON.stringify(items));
 }
 
+function setPlanEntryFormMode(mode) {
+  planEntryFormMode = mode === "batch" ? "batch" : "single";
+  const isBatch = planEntryFormMode === "batch";
+  planForm.classList.toggle("hidden", isBatch);
+  batchPlanForm.classList.toggle("hidden", !isBatch);
+  planEntryTabs.querySelectorAll("[data-plan-entry-mode]").forEach((button) => {
+    button.setAttribute("aria-selected", String(button.dataset.planEntryMode === planEntryFormMode));
+  });
+
+  if (isBatch) {
+    if (!batchPlanGroups.children.length) {
+      resetBatchPlanForm();
+    }
+    syncBatchPlanDate();
+    batchPlanGroups.querySelector("[data-batch-topic]")?.focus();
+  } else {
+    planTopicSelect.focus();
+  }
+}
+
+function resetBatchPlanForm() {
+  batchPlanGroups.innerHTML = "";
+  batchPlanSaveMessage.textContent = "";
+  addBatchPlanGroup();
+  syncBatchPlanDate();
+}
+
+function addBatchPlanGroup(topicId = "") {
+  const group = document.createElement("section");
+  const clientId = `batch-group-${++batchGroupCounter}`;
+  group.className = "batch-plan-group";
+  group.dataset.batchGroup = clientId;
+  group.innerHTML = `
+    <div class="batch-plan-group-header">
+      <h3>学习主题</h3>
+      <button class="danger-button" type="button" data-remove-batch-group>移除主题</button>
+    </div>
+    <label>主题
+      <select data-batch-topic aria-label="主题" aria-describedby="${clientId}-topic-error"></select>
+      <span id="${clientId}-topic-error" data-batch-error class="form-message is-error" aria-live="polite"></span>
+    </label>
+    <div class="batch-plan-task-list"></div>
+    <div class="batch-plan-group-actions">
+      <button class="secondary-button" type="button" data-add-batch-task>添加同主题任务</button>
+    </div>
+  `;
+  batchPlanGroups.appendChild(group);
+  addBatchTaskRow(group);
+  refreshBatchPlanOptions();
+  group.querySelector("[data-batch-topic]").value = topicId;
+  refreshBatchPlanOptions();
+  return group;
+}
+
+function addBatchTaskRow(groupElement) {
+  if (!groupElement) return;
+  const task = document.createElement("article");
+  const clientId = `batch-task-${++batchTaskCounter}`;
+  const detailsId = `${clientId}-details`;
+  task.className = "batch-plan-task-row";
+  task.dataset.batchTaskRow = clientId;
+  task.innerHTML = `
+    <div class="batch-plan-task-header">
+      <h4>学习任务</h4>
+      <button class="small-button" type="button" data-toggle-batch-task-details aria-expanded="false" aria-controls="${detailsId}">更多设置</button>
+      <button class="danger-button" type="button" data-remove-batch-task>移除任务</button>
+    </div>
+    <label>任务名称
+      <input data-batch-task type="text" required aria-describedby="${clientId}-task-error" />
+      <span id="${clientId}-task-error" data-batch-error class="form-message is-error" aria-live="polite"></span>
+    </label>
+    <div id="${detailsId}" class="batch-plan-task-details hidden" data-batch-task-details>
+      <label>学习资料（可选）
+        <select data-batch-resource aria-describedby="${clientId}-resource-error"></select>
+        <span id="${clientId}-resource-error" data-batch-error class="form-message is-error" aria-live="polite"></span>
+      </label>
+      <label>预计时长（分钟，可选）
+        <input data-batch-minutes type="number" min="1" step="1" aria-describedby="${clientId}-minutes-error" />
+        <span id="${clientId}-minutes-error" data-batch-error class="form-message is-error" aria-live="polite"></span>
+      </label>
+      <label>优先级
+        <select data-batch-priority required aria-describedby="${clientId}-priority-error"><option value="高">高</option><option value="中" selected>中</option><option value="低">低</option></select>
+        <span id="${clientId}-priority-error" data-batch-error class="form-message is-error" aria-live="polite"></span>
+      </label>
+    </div>
+  `;
+  groupElement.querySelector(".batch-plan-task-list").appendChild(task);
+  refreshBatchPlanOptions();
+  return task;
+}
+
+function refreshBatchPlanOptions() {
+  const groups = [...batchPlanGroups.querySelectorAll("[data-batch-group]")];
+  const activeTopics = window.LearningDataModel.getOrderedTopics(getActiveTopics());
+  const selectedTopicIds = groups.map((group) => group.querySelector("[data-batch-topic]").value).filter(Boolean);
+
+  groups.forEach((group) => {
+    const topicSelect = group.querySelector("[data-batch-topic]");
+    const currentTopicId = topicSelect.value;
+    topicSelect.innerHTML = "";
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = "请选择学习主题";
+    topicSelect.appendChild(emptyOption);
+    activeTopics.forEach((topic) => {
+      const option = document.createElement("option");
+      option.value = topic.id;
+      option.textContent = getTopicPath(topic);
+      option.disabled = topic.id !== currentTopicId && selectedTopicIds.includes(topic.id);
+      topicSelect.appendChild(option);
+    });
+    if (currentTopicId && !activeTopics.some((topic) => topic.id === currentTopicId)) {
+      const missingOption = document.createElement("option");
+      missingOption.value = currentTopicId;
+      missingOption.textContent = "所选主题已归档或不存在";
+      topicSelect.appendChild(missingOption);
+    }
+    topicSelect.value = currentTopicId;
+
+    group.querySelectorAll("[data-batch-resource]").forEach((resourceSelect) => {
+      const currentResourceId = resourceSelect.value;
+      resourceSelect.innerHTML = "";
+      const emptyResource = document.createElement("option");
+      emptyResource.value = "";
+      emptyResource.textContent = "不关联资料";
+      resourceSelect.appendChild(emptyResource);
+      const relatedResources = resources.filter((resource) => resource.topicId === currentTopicId);
+      relatedResources.forEach((resource) => {
+        const option = document.createElement("option");
+        option.value = resource.id;
+        option.textContent = resource.title;
+        resourceSelect.appendChild(option);
+      });
+      resourceSelect.disabled = !currentTopicId;
+      resourceSelect.value = relatedResources.some((resource) => resource.id === currentResourceId) ? currentResourceId : "";
+    });
+
+    const removeTaskButtons = group.querySelectorAll("[data-remove-batch-task]");
+    removeTaskButtons.forEach((button) => { button.disabled = removeTaskButtons.length === 1; });
+  });
+
+  groups.forEach((group) => {
+    group.querySelector("[data-remove-batch-group]").disabled = groups.length === 1;
+  });
+  const hasUnusedActiveTopic = activeTopics.some((topic) => !selectedTopicIds.includes(topic.id));
+  addBatchPlanGroupButton.disabled = !hasUnusedActiveTopic;
+  addBatchPlanGroupButton.title = hasUnusedActiveTopic ? "" : "所有活动主题都已加入当前草稿。";
+  addBatchPlanGroupButton.setAttribute("aria-describedby", hasUnusedActiveTopic ? "" : "batchPlanSaveMessage");
+  if (!hasUnusedActiveTopic && groups.length) {
+    batchPlanSaveMessage.textContent = "所有活动主题都已加入当前草稿。";
+  } else if (batchPlanSaveMessage.textContent === "所有活动主题都已加入当前草稿。") {
+    batchPlanSaveMessage.textContent = "";
+  }
+}
+
+function collectBatchPlanGroups() {
+  return [...batchPlanGroups.querySelectorAll("[data-batch-group]")].map((group) => ({
+    clientId: group.dataset.batchGroup,
+    topicId: group.querySelector("[data-batch-topic]").value,
+    tasks: [...group.querySelectorAll("[data-batch-task-row]")].map((task) => ({
+      clientId: task.dataset.batchTaskRow,
+      task: task.querySelector("[data-batch-task]").value,
+      resourceId: task.querySelector("[data-batch-resource]").value,
+      estimatedMinutes: task.querySelector("[data-batch-minutes]").value,
+      priority: task.querySelector("[data-batch-priority]").value,
+    })),
+  }));
+}
+
+function collectBatchInputValidityErrors() {
+  const errors = [];
+  batchPlanGroups.querySelectorAll("[data-batch-group]").forEach((group) => {
+    group.querySelectorAll("[data-batch-task-row]").forEach((row) => {
+      const minutesInput = row.querySelector("[data-batch-minutes]");
+      const { badInput, stepMismatch, rangeUnderflow } = minutesInput.validity;
+      if (badInput || stepMismatch || rangeUnderflow) {
+        errors.push({
+          groupId: group.dataset.batchGroup,
+          taskId: row.dataset.batchTaskRow,
+          field: "estimatedMinutes",
+          message: "分钟数必须为正整数或留空",
+        });
+      }
+    });
+  });
+  return errors;
+}
+
+function submitBatchPlans(event) {
+  event.preventDefault();
+  clearBatchPlanErrors();
+
+  const groups = collectBatchPlanGroups();
+  const result = window.LearningDataModel.validateBatchPlanGroups(groups, topics, resources);
+  const seenErrors = new Set();
+  const errors = [...result.errors, ...collectBatchInputValidityErrors()].filter((error) => {
+    const key = `${error.groupId}\u0000${error.taskId || ""}\u0000${error.field}`;
+    if (seenErrors.has(key)) return false;
+    seenErrors.add(key);
+    return true;
+  });
+  if (errors.length) {
+    showBatchPlanErrors(errors);
+    batchPlanSaveMessage.textContent = "存在未完成或无效内容，尚未保存任何计划。";
+    return;
+  }
+
+  const now = new Date();
+  const newPlans = window.LearningDataModel.createBatchPlanRecords(result.entries, {
+    date: getToday(),
+    createdAt: now.toISOString(),
+    batchToken: String(now.getTime()),
+  });
+  if (!newPlans.length) {
+    batchPlanSaveMessage.textContent = "批量计划构建失败，尚未保存任何计划，草稿已保留。";
+    return;
+  }
+
+  const nextPlans = [...newPlans, ...plans];
+  try {
+    saveItems(PLAN_STORAGE_KEY, nextPlans);
+  } catch {
+    batchPlanSaveMessage.textContent = "批量计划保存失败，草稿已保留，请检查浏览器存储后重试。";
+    return;
+  }
+
+  plans = nextPlans;
+  selectedPlanView = "today";
+  resetBatchPlanForm();
+  render();
+  batchPlanSaveMessage.textContent = `已保存 ${newPlans.length} 条今日计划。`;
+}
+
+function clearBatchPlanErrors() {
+  batchPlanForm.querySelectorAll("[data-batch-topic], [data-batch-task], [data-batch-resource], [data-batch-minutes], [data-batch-priority]").forEach((field) => {
+    field.removeAttribute("aria-invalid");
+  });
+  batchPlanForm.querySelectorAll("[data-batch-error]").forEach((errorNode) => {
+    errorNode.textContent = "";
+  });
+  batchPlanSaveMessage.textContent = "";
+}
+
+function showBatchPlanErrors(errors) {
+  const fieldSelectors = {
+    topicId: "[data-batch-topic]",
+    task: "[data-batch-task]",
+    resourceId: "[data-batch-resource]",
+    estimatedMinutes: "[data-batch-minutes]",
+    priority: "[data-batch-priority]",
+  };
+  const detailFields = new Set(["resourceId", "estimatedMinutes", "priority"]);
+  let firstErrorField = null;
+
+  errors.forEach((error) => {
+    const group = [...batchPlanGroups.querySelectorAll("[data-batch-group]")]
+      .find((item) => item.dataset.batchGroup === error.groupId);
+    const row = error.taskId && group
+      ? [...group.querySelectorAll("[data-batch-task-row]")]
+        .find((item) => item.dataset.batchTaskRow === error.taskId)
+      : null;
+    const fieldRoot = error.field === "topicId" ? group : row;
+    const field = fieldRoot?.querySelector(fieldSelectors[error.field]);
+    const errorNodeId = field?.getAttribute("aria-describedby");
+    const errorNode = errorNodeId ? document.getElementById(errorNodeId) : null;
+
+    if (!field || !errorNode) {
+      batchPlanSaveMessage.textContent = typeof error.message === "string" && error.message
+        ? error.message
+        : "批量计划中存在无法定位的错误。";
+      return;
+    }
+
+    field.setAttribute("aria-invalid", "true");
+    errorNode.textContent = error.message;
+    if (detailFields.has(error.field)) {
+      const details = row.querySelector("[data-batch-task-details]");
+      const toggle = row.querySelector("[data-toggle-batch-task-details]");
+      details.classList.remove("hidden");
+      toggle.setAttribute("aria-expanded", "true");
+    }
+    if (!firstErrorField) firstErrorField = field;
+  });
+
+  firstErrorField?.focus();
+}
+
+function syncBatchPlanDate() {
+  batchPlanDate.textContent = `今天的计划日期：${getToday()}`;
+}
+
 function render() {
   if (!editingProgressId) {
     setProgressDateDefaults();
@@ -776,6 +1115,7 @@ function render() {
   updateResourceTopicOptions();
   updatePlanTopicOptions();
   updatePlanResourceOptions();
+  refreshBatchPlanOptions();
   updateNoteTopicOptions();
   updateNoteRelatedOptions();
   updateProgressTopicOptions();

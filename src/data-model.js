@@ -382,6 +382,92 @@
     return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
   }
 
+  function validateBatchPlanGroups(groups, topics, resources) {
+    const errors = [];
+    const addError = (groupId, taskId, field, message) => errors.push({ groupId, taskId, field, message });
+    if (!Array.isArray(groups) || groups.length === 0) {
+      addError("", null, "groups", "至少需要一个主题");
+      return { entries: [], errors };
+    }
+
+    const activeTopicIds = new Set(getActiveTopics(topics).map((topic) => topic.id));
+    const resourceById = new Map(Array.isArray(resources) ? resources.map((resource) => [resource.id, resource]) : []);
+    const seenTopics = new Set();
+    const entries = [];
+
+    groups.forEach((group) => {
+      const groupId = typeof group?.clientId === "string" ? group.clientId : "";
+      const topicId = typeof group?.topicId === "string" ? group.topicId : "";
+      if (!activeTopicIds.has(topicId)) {
+        addError(groupId, null, "topicId", "请选择一个未归档的有效主题");
+      } else if (seenTopics.has(topicId)) {
+        addError(groupId, null, "topicId", "每个主题只能有一个计划组");
+      } else {
+        seenTopics.add(topicId);
+      }
+
+      if (!Array.isArray(group?.tasks) || group.tasks.length === 0) {
+        addError(groupId, null, "tasks", "每个主题组至少需要一个任务");
+        return;
+      }
+
+      group.tasks.forEach((row) => {
+        const taskId = typeof row?.clientId === "string" ? row.clientId : null;
+        const task = typeof row?.task === "string" ? row.task.trim() : "";
+        const resourceId = typeof row?.resourceId === "string" ? row.resourceId.trim() : "";
+        const minutesText = typeof row?.estimatedMinutes === "string" ? row.estimatedMinutes.trim() : "";
+        const priority = row?.priority;
+        let valid = true;
+        if (!task) {
+          addError(groupId, taskId, "task", "任务名称不能为空");
+          valid = false;
+        }
+        if (resourceId && (!resourceById.has(resourceId) || resourceById.get(resourceId).topicId !== topicId)) {
+          addError(groupId, taskId, "resourceId", "资料不存在或不属于当前主题");
+          valid = false;
+        }
+        let estimatedMinutes = null;
+        if (minutesText) {
+          estimatedMinutes = Number(minutesText);
+          if (!/^\d+$/.test(minutesText) || !Number.isInteger(estimatedMinutes) || estimatedMinutes <= 0) {
+            addError(groupId, taskId, "estimatedMinutes", "分钟数必须为正整数或留空");
+            valid = false;
+            estimatedMinutes = null;
+          }
+        }
+        if (!["高", "中", "低"].includes(priority)) {
+          addError(groupId, taskId, "priority", "优先级必须为高、中或低");
+          valid = false;
+        }
+        if (valid && activeTopicIds.has(topicId)) {
+          entries.push({ groupId, taskId, topicId, task, resourceId: resourceId || null, estimatedMinutes, priority });
+        }
+      });
+    });
+
+    return errors.length ? { entries: [], errors } : { entries, errors };
+  }
+
+  function createBatchPlanRecords(entries, metadata) {
+    const { date, createdAt, batchToken } = metadata || {};
+    if (!Array.isArray(entries) || !isValidPlanDate(date) || typeof createdAt !== "string" || !createdAt || Number.isNaN(Date.parse(createdAt)) || typeof batchToken !== "string" || !batchToken) {
+      return [];
+    }
+
+    return entries.map((entry, index) => ({
+      id: `plan-${batchToken}-${index + 1}`,
+      date,
+      createdAt,
+      topicId: entry.topicId,
+      resourceId: entry.resourceId,
+      task: entry.task,
+      priority: entry.priority,
+      estimatedMinutes: entry.estimatedMinutes,
+      isCompleted: false,
+      isBackfilled: false,
+    }));
+  }
+
   function classifyPlanDate(plan, today) {
     if (!isValidPlanDate(plan?.date) || !isValidPlanDate(today)) {
       return "history";
@@ -441,6 +527,8 @@
     classifyPlanDate,
     getEligiblePlansForProgress,
     getResourceTodayPlanSummary,
+    validateBatchPlanGroups,
+    createBatchPlanRecords,
   };
 
   globalScope.LearningDataModel = api;

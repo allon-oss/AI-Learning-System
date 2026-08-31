@@ -185,6 +185,10 @@
             <h2>新增学习计划</h2>
             <p>普通计划用于今天或未来；如果忘记记录过去的安排，请主动选择“历史补录”。</p>
           </div>
+          <div class="plan-entry-tabs" role="tablist" aria-label="计划录入方式">
+            <button class="small-button selected" type="button" role="tab" aria-selected="true" aria-controls="planForm" data-plan-entry-mode="single">单条录入</button>
+            <button class="small-button" type="button" role="tab" aria-selected="false" aria-controls="batchPlanForm" data-plan-entry-mode="batch">批量今日计划</button>
+          </div>
           <form id="planForm" class="topic-form">
             <label>
               学习主题
@@ -232,6 +236,15 @@
             <div class="form-actions">
               <button class="primary-button" type="submit">添加计划</button>
             </div>
+          </form>
+          <form id="batchPlanForm" class="batch-plan-form hidden" aria-label="批量录入今日计划">
+            <p id="batchPlanDate" class="batch-plan-date"></p>
+            <div id="batchPlanGroups"></div>
+            <div class="form-actions">
+              <button id="addBatchPlanGroupButton" class="secondary-button" type="button">添加主题</button>
+              <button id="saveBatchPlansButton" class="primary-button" type="submit">统一保存今日计划</button>
+            </div>
+            <p id="batchPlanSaveMessage" class="form-message" aria-live="polite"></p>
           </form>
         </section>
 
