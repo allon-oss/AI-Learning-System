@@ -165,6 +165,7 @@ let editingProgressId = "";
 let selectedPlanView = "today";
 let showArchivedTopics = false;
 let isProgressDraftGenerating = false;
+let isProgressSaving = false;
 let progressDraftRequestToken = 0;
 let progressDraftQueue = [];
 let activeProgressDraftId = "";
@@ -506,7 +507,7 @@ cancelNoteEditButton.addEventListener("click", resetNoteForm);
 cancelProgressEditButton.addEventListener("click", resetProgressForm);
 
 generateProgressDraftButton.addEventListener("click", generateProgressDraftFromDescription);
-discardProgressDraftButton.addEventListener("click", () => clearProgressDraftState({ resetForm: true }));
+discardProgressDraftButton.addEventListener("click", discardActiveProgressDraft);
 
 planForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -629,6 +630,8 @@ noteForm.addEventListener("submit", (event) => {
 progressForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
+  if (isProgressSaving) return;
+
   const formData = new FormData(progressForm);
   const date = formData.get("date");
   const isEditing = Boolean(editingProgressId);
@@ -666,9 +669,10 @@ progressForm.addEventListener("submit", (event) => {
 
   const now = new Date().toISOString();
   let savedProgressId = editingProgressId;
+  let nextProgressRecords;
 
   if (isEditing) {
-    progressRecords = progressRecords.map((progress) => {
+    nextProgressRecords = progressRecords.map((progress) => {
       if (progress.id !== editingProgressId) {
         return progress;
       }
@@ -699,23 +703,40 @@ progressForm.addEventListener("submit", (event) => {
       updatedAt: now,
     };
 
-    progressRecords = [progress, ...progressRecords];
+    nextProgressRecords = [progress, ...progressRecords];
     savedProgressId = progress.id;
   }
 
-  saveItems(PROGRESS_STORAGE_KEY, progressRecords);
+  isProgressSaving = true;
+  progressSubmitButton.disabled = true;
+  try {
+    saveItems(PROGRESS_STORAGE_KEY, nextProgressRecords);
+  } catch {
+    isProgressSaving = false;
+    progressSubmitButton.disabled = false;
+    progressSaveMessage.textContent = "进度保存失败，请检查浏览器存储后重试。";
+    return;
+  }
+
+  progressRecords = nextProgressRecords;
   invalidateProgressDraftRequest();
   const wasDraftConfirmation = Boolean(activeProgressDraftId) && !isEditing;
-  resetProgressForm();
   if (wasDraftConfirmation) {
-    clearProgressDraftState({ resetForm: false });
+    removeActiveProgressDraft();
+  } else {
+    resetProgressForm();
   }
   progressSaveMessage.textContent = isEditing
     ? "进度记录已更新。"
     : wasDraftConfirmation
-      ? "AI 进度草稿已确认并保存。"
+      ? activeProgressDraftId ? "当前草稿已保存，请继续确认下一条。" : "AI 进度草稿队列已全部确认并保存。"
       : "进度记录已保存。";
   render();
+  progressSubmitButton.disabled = true;
+  window.setTimeout(() => {
+    isProgressSaving = false;
+    progressSubmitButton.disabled = !getActiveTopics().length && !editingProgressId;
+  }, 300);
 });
 
 topicDetail.addEventListener("click", (event) => {
@@ -1856,10 +1877,11 @@ function renderProgressDraftQueue() {
     const isActive = item.id === activeProgressDraftId;
     const duration = item.draft.durationMinutes === null ? "时长待补充" : `${item.draft.durationMinutes} 分钟`;
     const completion = item.draft.completionPercent === null ? "完成度待补充" : `完成度 ${item.draft.completionPercent}%`;
+    const originalPosition = Number(item.id.match(/-(\d+)$/)?.[1]) || index + 1;
     return `
       <article class="progress-draft-card${isActive ? " is-active" : ""}" data-progress-draft-id="${escapeHtml(item.id)}">
-        <button type="button" data-select-progress-draft="${escapeHtml(item.id)}" aria-current="${isActive ? "true" : "false"}" aria-label="编辑第 ${index + 1} 条草稿：${escapeHtml(label)}">
-          <strong>第 ${index + 1} 条 · ${escapeHtml(label)}</strong>
+        <button type="button" data-select-progress-draft="${escapeHtml(item.id)}" aria-current="${isActive ? "true" : "false"}" aria-label="编辑第 ${originalPosition} 条草稿：${escapeHtml(label)}">
+          <strong>第 ${originalPosition} 条 · ${escapeHtml(label)}</strong>
           <span>${escapeHtml(item.sourceText)}</span>
           <span class="progress-draft-card-meta">${escapeHtml(duration)} · ${escapeHtml(completion)}</span>
           <span class="progress-draft-card-status">${missing.length ? `还需补充 ${missing.length} 项` : "必填项完整"}</span>
@@ -1913,6 +1935,47 @@ function selectProgressDraft(itemId) {
   activeProgressDraftId = itemId;
   loadActiveProgressDraftIntoForm();
   renderProgressDraftQueue();
+}
+
+function removeActiveProgressDraft() {
+  const result = window.ProgressDraftQueue.removeProgressDraftQueueItem(progressDraftQueue, activeProgressDraftId);
+  progressDraftQueue = result.items;
+  activeProgressDraftId = result.nextActiveId;
+  if (!activeProgressDraftId) {
+    finishProgressDraftQueue();
+    return;
+  }
+  renderProgressDraftQueue();
+  loadActiveProgressDraftIntoForm();
+}
+
+function discardActiveProgressDraft() {
+  if (!activeProgressDraftId) return;
+  const current = progressDraftQueue.find((item) => item.id === activeProgressDraftId);
+  if (!current || !window.confirm(`放弃这条未保存草稿吗？\n${current.sourceText}`)) return;
+  invalidateProgressDraftRequest();
+  removeActiveProgressDraft();
+  progressSaveMessage.textContent = activeProgressDraftId
+    ? "当前草稿已放弃，其他草稿仍保留。"
+    : "草稿队列已处理完毕。";
+}
+
+function finishProgressDraftQueue() {
+  progressDraftQueue = [];
+  activeProgressDraftId = "";
+  suspendedProgressDraftId = "";
+  progressDraftQueueWarnings = [];
+  aiProgressDescription.value = "";
+  aiProgressStatus.textContent = "";
+  aiProgressStatus.classList.remove("is-error");
+  aiProgressWarnings.innerHTML = "";
+  aiProgressWarnings.classList.add("hidden");
+  aiProgressPanel.classList.remove("is-draft-ready");
+  progressDraftQueueList.innerHTML = "";
+  progressDraftQueueSummary.textContent = "";
+  progressDraftQueuePanel.classList.add("hidden");
+  discardProgressDraftButton.classList.add("hidden");
+  resetProgressForm();
 }
 
 function clearProgressDraftState({ resetForm }) {
@@ -2443,12 +2506,12 @@ function updateProgressTopicOptions({ allowEmpty = false } = {}) {
     setEmptyTopicOption(progressTopicSelect);
     progressResourceSelect.disabled = true;
     progressPlanSelect.disabled = true;
-    progressSubmitButton.disabled = !editingProgressId;
+    progressSubmitButton.disabled = isProgressSaving || !editingProgressId;
     return;
   }
 
   progressTopicSelect.disabled = false;
-  progressSubmitButton.disabled = false;
+  progressSubmitButton.disabled = isProgressSaving;
   if (allowEmpty) {
     const option = document.createElement("option");
     option.value = "";

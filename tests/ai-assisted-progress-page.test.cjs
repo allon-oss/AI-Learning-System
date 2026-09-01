@@ -128,6 +128,95 @@ test("多主题描述生成有序队列并在切换时保留各自修改", async
   assert.deepEqual(pageErrors, []);
 });
 
+test("保存第一条只新增一条记录并完整保留第二条草稿", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+  await page.locator("#progressCompletion").fill("70");
+  const secondBefore = await page.locator("[data-progress-draft-id]").nth(1).textContent();
+  await page.getByRole("button", { name: "确认并保存此条" }).click();
+
+  const saved = await getStoredProgress(page);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].topicId, "topic-codex");
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 1);
+  assert.equal(await page.locator("[data-progress-draft-id]").nth(0).textContent(), secondBefore);
+  assert.equal(await page.locator("#progressTopic").inputValue(), "topic-words");
+  assert.equal(await page.locator("#progressDuration").inputValue(), "");
+  assert.equal(await page.locator("#progressCompletion").inputValue(), "");
+  assert.deepEqual(pageErrors, []);
+});
+
+test("当前草稿必填项缺失或主题失效时保留整个队列", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+
+  await page.getByRole("button", { name: "确认并保存此条" }).click();
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 2);
+  assert.deepEqual(await getStoredProgress(page), []);
+
+  await page.locator("#progressCompletion").fill("70");
+  await page.evaluate(() => {
+    topics = topics.map((topic) => topic.id === "topic-codex" ? { ...topic, isArchived: true } : topic);
+  });
+  await page.getByRole("button", { name: "确认并保存此条" }).click();
+  assert.match(await page.locator("#progressSaveMessage").textContent(), /主题已归档或不存在/);
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 2);
+  assert.deepEqual(await getStoredProgress(page), []);
+  assert.deepEqual(pageErrors, []);
+});
+
+test("存储写入失败时记录、队列顺序和当前表单都保持不变", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+  await page.locator("#progressCompletion").fill("70");
+  const cardsBefore = await page.locator("[data-progress-draft-id]").allTextContents();
+  const activeIdBefore = await page.locator("[data-progress-draft-id].is-active").getAttribute("data-progress-draft-id");
+  await page.evaluate((key) => {
+    window.__originalStorageSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItem(storageKey, value) {
+      if (storageKey === key) throw new Error("storage unavailable");
+      return window.__originalStorageSetItem.call(this, storageKey, value);
+    };
+  }, progressStorageKey);
+
+  await page.getByRole("button", { name: "确认并保存此条" }).click();
+  assert.match(await page.locator("#progressSaveMessage").textContent(), /进度保存失败/);
+  assert.deepEqual(await getStoredProgress(page), []);
+  assert.deepEqual(await page.locator("[data-progress-draft-id]").allTextContents(), cardsBefore);
+  assert.equal(await page.locator("#progressDuration").inputValue(), "40");
+  assert.equal(await page.locator("#progressCompletion").inputValue(), "70");
+  assert.equal(await page.locator("[data-progress-draft-id].is-active").getAttribute("data-progress-draft-id"), activeIdBefore);
+  await page.evaluate(() => { Storage.prototype.setItem = window.__originalStorageSetItem; });
+  assert.deepEqual(pageErrors, []);
+});
+
+test("双击确认按钮只保存当前一条记录", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+  await page.locator("#progressCompletion").fill("70");
+  await page.getByRole("button", { name: "确认并保存此条" }).dblclick();
+  await page.waitForTimeout(400);
+  assert.equal((await getStoredProgress(page)).length, 1);
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 1);
+  assert.deepEqual(pageErrors, []);
+});
+
+test("放弃当前草稿必须确认且不会写入进度存储", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.locator("#discardProgressDraftButton").click();
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 2);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#discardProgressDraftButton").click();
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 1);
+  assert.equal(await page.locator("#progressTopic").inputValue(), "topic-words");
+  assert.deepEqual(await getStoredProgress(page), []);
+  assert.deepEqual(pageErrors, []);
+});
+
 test("生成的 AI 草稿保持可编辑，确认后才按修改值保存", async (t) => {
   const { page, pageErrors } = await startPage(t, fixture());
 
@@ -206,6 +295,7 @@ test("放弃草稿会清空草稿界面和表单，但不产生进度记录", as
   await page.locator("#aiProgressDescription").fill("今天学习 Transformer 入门 45 分钟，完成 70%");
   await page.locator("#generateProgressDraftButton").click();
   await page.getByRole("button", { name: "确认并保存" }).waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#discardProgressDraftButton").click();
 
   assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
@@ -281,6 +371,7 @@ test("放弃草稿会使尚未完成的重新生成请求失效", async (t) => {
     });
   });
   await page.locator("#generateProgressDraftButton").click();
+  page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#discardProgressDraftButton").click();
   await page.evaluate(() => window.__resolveProgressDraft({
     draft: { date: new Date().toISOString().slice(0, 10), topicId: "topic-transformer", resourceId: null, planId: null, durationMinutes: 45, completionPercent: 70, reflection: "过期草稿" },
@@ -313,6 +404,7 @@ test("放弃草稿后旧请求拒绝不会显示错误或重新激活草稿", as
     });
   });
   await page.locator("#generateProgressDraftButton").click();
+  page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#discardProgressDraftButton").click();
   await page.evaluate(() => window.__rejectProgressDraft(new Error("stale request failed")));
   await waitForControlledDraftSettlement(page);
