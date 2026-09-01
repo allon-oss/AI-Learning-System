@@ -50,6 +50,24 @@ function fixture({ progress = [] } = {}) {
   };
 }
 
+function multiTopicFixture({ progress = [] } = {}) {
+  const today = getLocalToday();
+  return {
+    "personal-learning-system-topics": [
+      { id: "topic-codex", name: "Codex 实践", direction: "AI 学习", parentId: "", description: "", status: "学习中", createdAt: today, updatedAt: today },
+      { id: "topic-words", name: "词汇", direction: "雅思英语学习", parentId: "", description: "", status: "学习中", createdAt: today, updatedAt: today },
+    ],
+    "personal-learning-system-directions": ["AI 学习", "雅思英语学习"],
+    "personal-learning-system-resources": [],
+    "personal-learning-system-plans": [
+      { id: "plan-codex", date: today, topicId: "topic-codex", resourceId: null, task: "练习 Codex", priority: "中", estimatedMinutes: 40, isCompleted: false, isBackfilled: false, createdAt: `${today}T00:00:00.000Z` },
+      { id: "plan-words", date: today, topicId: "topic-words", resourceId: null, task: "背单词", priority: "中", estimatedMinutes: 25, isCompleted: false, isBackfilled: false, createdAt: `${today}T00:00:00.000Z` },
+    ],
+    "personal-learning-system-notes": [],
+    [progressStorageKey]: progress,
+  };
+}
+
 async function openFixturePage(server, storage) {
   const browser = await chromium.launch({ executablePath: browserExecutable, headless: true });
   const page = await browser.newPage();
@@ -84,6 +102,31 @@ async function waitForControlledDraftSettlement(page) {
     channel.port2.postMessage(null);
   }));
 }
+
+async function generateTwoDrafts(page) {
+  await page.locator("#aiProgressDescription").fill("今天 Codex 学了40分钟，背了40个单词。");
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByText("共 2 条，待处理 2 条").waitFor();
+}
+
+test("多主题描述生成有序队列并在切换时保留各自修改", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+
+  const cards = page.locator("[data-progress-draft-id]");
+  assert.equal(await cards.count(), 2);
+  assert.match(await cards.nth(0).textContent(), /Codex/);
+  assert.match(await cards.nth(1).textContent(), /单词/);
+
+  await page.locator("#progressCompletion").fill("70");
+  await cards.nth(1).getByRole("button").click();
+  await page.locator("#progressDuration").fill("25");
+  await page.locator("#progressCompletion").fill("80");
+  await cards.nth(0).getByRole("button").click();
+  assert.equal(await page.locator("#progressDuration").inputValue(), "40");
+  assert.equal(await page.locator("#progressCompletion").inputValue(), "70");
+  assert.deepEqual(pageErrors, []);
+});
 
 test("生成的 AI 草稿保持可编辑，确认后才按修改值保存", async (t) => {
   const { page, pageErrors } = await startPage(t, fixture());

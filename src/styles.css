@@ -241,6 +241,84 @@ textarea {
   padding-left: 1.25rem;
 }
 
+.progress-draft-queue,
+.progress-draft-queue-list,
+.progress-draft-card,
+.progress-draft-card button {
+  min-width: 0;
+}
+
+.progress-draft-queue {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #d8d2c5;
+  padding-top: 14px;
+}
+
+.progress-draft-queue-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.progress-draft-queue-heading h3,
+.progress-draft-queue-heading p {
+  margin: 0;
+}
+
+.progress-draft-queue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.progress-draft-card {
+  border: 1px solid #d8d2c5;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.progress-draft-card.is-active {
+  border: 2px solid #216e4e;
+  background: #edf8f1;
+  box-shadow: inset 4px 0 0 #216e4e;
+}
+
+.progress-draft-card button {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  padding: 12px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-draft-card button:focus-visible {
+  outline: 3px solid #d49a2f;
+  outline-offset: -3px;
+}
+
+.progress-draft-card span {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.progress-draft-card-meta,
+.progress-draft-card-status {
+  color: #526259;
+  font-size: 0.88rem;
+}
+
+.progress-draft-card-status {
+  font-weight: 700;
+}
+
 .ai-progress-panel.is-draft-ready {
   border-color: #216e4e;
   background: #f3fbf5;
@@ -692,8 +770,17 @@ textarea {
 
   .ai-progress-panel textarea,
   .ai-progress-panel button,
-  .ai-progress-warnings {
+  .ai-progress-warnings,
+  .progress-draft-queue-list {
     min-width: 0;
+  }
+
+  .progress-draft-queue-list {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-progress-panel .form-actions button {
+    width: 100%;
   }
 
   .section-title-row {

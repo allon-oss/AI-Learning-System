@@ -142,6 +142,10 @@ if (!window.AIService) {
   throw new Error("AI 服务模块加载失败，请刷新页面后重试。");
 }
 
+if (!window.ProgressDraftQueue) {
+  throw new Error("草稿队列模块加载失败，请刷新页面后重试。");
+}
+
 let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, defaultTopics));
 let learningDirections = window.LearningDataModel.normalizeLearningDirections(loadItems(LEARNING_DIRECTION_STORAGE_KEY, []));
 let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
@@ -161,8 +165,12 @@ let editingProgressId = "";
 let selectedPlanView = "today";
 let showArchivedTopics = false;
 let isProgressDraftGenerating = false;
-let isProgressDraftActive = false;
 let progressDraftRequestToken = 0;
+let progressDraftQueue = [];
+let activeProgressDraftId = "";
+let progressDraftGenerationId = 0;
+let suspendedProgressDraftId = "";
+let progressDraftQueueWarnings = [];
 
 const topicList = document.querySelector("#topicList");
 const topicDetail = document.querySelector("#topicDetail");
@@ -259,6 +267,9 @@ const generateProgressDraftButton = document.querySelector("#generateProgressDra
 const discardProgressDraftButton = document.querySelector("#discardProgressDraftButton");
 const aiProgressStatus = document.querySelector("#aiProgressStatus");
 const aiProgressWarnings = document.querySelector("#aiProgressWarnings");
+const progressDraftQueuePanel = document.querySelector("#progressDraftQueuePanel");
+const progressDraftQueueSummary = document.querySelector("#progressDraftQueueSummary");
+const progressDraftQueueList = document.querySelector("#progressDraftQueueList");
 const progressDuration = document.querySelector("#progressDuration");
 const progressCompletion = document.querySelector("#progressCompletion");
 const progressReflection = document.querySelector("#progressReflection");
@@ -454,13 +465,33 @@ noteTopicSelect.addEventListener("change", updateNoteRelatedOptions);
 
 progressTopicSelect.addEventListener("change", () => {
   updateProgressRelatedOptions(Boolean(editingProgressId));
+  if (activeProgressDraftId) {
+    syncActiveProgressDraftFromForm();
+    renderProgressDraftQueue();
+  }
 });
 
 progressDate.addEventListener("change", () => {
   setProgressDateDefaults();
   updateProgressRelatedOptions(Boolean(editingProgressId));
+  if (activeProgressDraftId) {
+    syncActiveProgressDraftFromForm();
+    renderProgressDraftQueue();
+  }
 });
 progressDate.addEventListener("focus", setProgressDateDefaults);
+
+progressForm.addEventListener("input", () => {
+  if (activeProgressDraftId) {
+    syncActiveProgressDraftFromForm();
+    renderProgressDraftQueue();
+  }
+});
+
+progressDraftQueueList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-select-progress-draft]");
+  if (button) selectProgressDraft(button.dataset.selectProgressDraft);
+});
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
@@ -674,7 +705,7 @@ progressForm.addEventListener("submit", (event) => {
 
   saveItems(PROGRESS_STORAGE_KEY, progressRecords);
   invalidateProgressDraftRequest();
-  const wasDraftConfirmation = isProgressDraftActive && !isEditing;
+  const wasDraftConfirmation = Boolean(activeProgressDraftId) && !isEditing;
   resetProgressForm();
   if (wasDraftConfirmation) {
     clearProgressDraftState({ resetForm: false });
@@ -1721,7 +1752,7 @@ async function generateProgressDraftFromDescription() {
   const requestToken = ++progressDraftRequestToken;
 
   try {
-    const result = await window.AIService.generateProgressDraft({
+    const result = await window.AIService.generateProgressDrafts({
       description,
       referenceDate: getToday(),
       context: { directions: learningDirections, topics: getActiveTopics(), resources, plans },
@@ -1729,7 +1760,7 @@ async function generateProgressDraftFromDescription() {
     if (requestToken !== progressDraftRequestToken) {
       return;
     }
-    applyProgressDraft(result);
+    applyProgressDraftsResult(result);
   } catch {
     if (requestToken !== progressDraftRequestToken) {
       return;
@@ -1744,8 +1775,41 @@ async function generateProgressDraftFromDescription() {
   }
 }
 
-function applyProgressDraft(result) {
-  const draft = result.draft;
+function applyProgressDraftsResult(result) {
+  progressDraftGenerationId += 1;
+  progressDraftQueue = window.ProgressDraftQueue.createProgressDraftQueueItems(result.drafts, progressDraftGenerationId);
+  progressDraftQueueWarnings = result.warnings.slice();
+  activeProgressDraftId = progressDraftQueue[0].id;
+  suspendedProgressDraftId = "";
+  renderProgressDraftQueue();
+  loadActiveProgressDraftIntoForm();
+}
+
+function readProgressDraftFromForm() {
+  return {
+    date: progressDate.value || null,
+    topicId: progressTopicSelect.value || null,
+    resourceId: progressResourceSelect.value || null,
+    planId: progressPlanSelect.value || null,
+    durationMinutes: progressDuration.value === "" ? null : Number(progressDuration.value),
+    completionPercent: progressCompletion.value === "" ? null : Number(progressCompletion.value),
+    reflection: progressReflection.value,
+  };
+}
+
+function syncActiveProgressDraftFromForm() {
+  if (!activeProgressDraftId) return;
+  progressDraftQueue = window.ProgressDraftQueue.updateProgressDraftQueueItem(
+    progressDraftQueue,
+    activeProgressDraftId,
+    readProgressDraftFromForm(),
+  );
+}
+
+function loadActiveProgressDraftIntoForm() {
+  const item = progressDraftQueue.find((candidate) => candidate.id === activeProgressDraftId);
+  if (!item) return;
+  const draft = item.draft;
   editingProgressId = "";
   progressForm.reset();
   progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
@@ -1755,9 +1819,10 @@ function applyProgressDraft(result) {
   progressSaveMessage.textContent = "";
   progressDate.max = getToday();
   progressDate.value = draft.date || "";
-  updateProgressTopicOptions({ allowEmpty: draft.topicId === null });
+  const hasActiveDraftTopic = Boolean(draft.topicId && isActiveTopicId(draft.topicId));
+  updateProgressTopicOptions({ allowEmpty: !hasActiveDraftTopic });
 
-  if (draft.topicId && [...progressTopicSelect.options].some((option) => option.value === draft.topicId)) {
+  if (hasActiveDraftTopic && [...progressTopicSelect.options].some((option) => option.value === draft.topicId)) {
     progressTopicSelect.value = draft.topicId;
   }
 
@@ -1770,14 +1835,38 @@ function applyProgressDraft(result) {
   }
   progressDuration.value = draft.durationMinutes ?? "";
   progressCompletion.value = draft.completionPercent ?? "";
-  progressReflection.value = draft.reflection;
-  isProgressDraftActive = true;
-  progressSubmitButton.textContent = "确认并保存";
+  progressReflection.value = draft.reflection || "";
+  progressSubmitButton.textContent = "确认并保存此条";
+  discardProgressDraftButton.textContent = "放弃此条";
   discardProgressDraftButton.classList.remove("hidden");
-  renderProgressDraftFeedback(result);
+  syncActiveProgressDraftFromForm();
+  renderProgressDraftQueue();
 }
 
-function renderProgressDraftFeedback(result) {
+function renderProgressDraftQueue() {
+  const hasQueue = progressDraftQueue.length > 0;
+  progressDraftQueuePanel.classList.toggle("hidden", !hasQueue);
+  progressDraftQueueSummary.textContent = hasQueue
+    ? `共 ${progressDraftQueue.length} 条，待处理 ${progressDraftQueue.length} 条`
+    : "";
+  progressDraftQueueList.innerHTML = progressDraftQueue.map((item, index) => {
+    const topic = topics.find((candidate) => candidate.id === item.draft.topicId);
+    const label = topic ? getTopicPath(topic) : item.suggestedDirection || "主题待选择";
+    const missing = window.ProgressDraftQueue.getCurrentProgressDraftMissingFields(item.draft);
+    const isActive = item.id === activeProgressDraftId;
+    const duration = item.draft.durationMinutes === null ? "时长待补充" : `${item.draft.durationMinutes} 分钟`;
+    const completion = item.draft.completionPercent === null ? "完成度待补充" : `完成度 ${item.draft.completionPercent}%`;
+    return `
+      <article class="progress-draft-card${isActive ? " is-active" : ""}" data-progress-draft-id="${escapeHtml(item.id)}">
+        <button type="button" data-select-progress-draft="${escapeHtml(item.id)}" aria-current="${isActive ? "true" : "false"}" aria-label="编辑第 ${index + 1} 条草稿：${escapeHtml(label)}">
+          <strong>第 ${index + 1} 条 · ${escapeHtml(label)}</strong>
+          <span>${escapeHtml(item.sourceText)}</span>
+          <span class="progress-draft-card-meta">${escapeHtml(duration)} · ${escapeHtml(completion)}</span>
+          <span class="progress-draft-card-status">${missing.length ? `还需补充 ${missing.length} 项` : "必填项完整"}</span>
+        </button>
+      </article>`;
+  }).join("");
+
   const fieldLabels = {
     date: "记录日期",
     topicId: "学习主题",
@@ -1790,19 +1879,25 @@ function renderProgressDraftFeedback(result) {
   const requiredFields = ["date", "topicId", "durationMinutes", "completionPercent"];
   const optionalAssociationFields = ["resourceId", "planId"];
   const optionalSummaryFields = ["reflection"];
-  const requiredMissingLabels = result.missingFields.filter((field) => requiredFields.includes(field)).map((field) => fieldLabels[field]);
-  const optionalMissingLabels = result.missingFields.filter((field) => optionalAssociationFields.includes(field)).map((field) => fieldLabels[field]);
-  const optionalSummaryLabels = result.missingFields.filter((field) => optionalSummaryFields.includes(field)).map((field) => fieldLabels[field]);
+  const active = progressDraftQueue.find((item) => item.id === activeProgressDraftId);
+  const currentMissing = active ? window.ProgressDraftQueue.getCurrentProgressDraftMissingFields(active.draft) : [];
+  const providerMissing = active?.providerMissingFields || [];
+  const requiredMissingLabels = currentMissing.filter((field) => requiredFields.includes(field)).map((field) => fieldLabels[field]);
+  const optionalMissingLabels = providerMissing.filter((field) => optionalAssociationFields.includes(field)).map((field) => fieldLabels[field]);
+  const optionalSummaryLabels = providerMissing.filter((field) => optionalSummaryFields.includes(field)).map((field) => fieldLabels[field]);
   const feedback = [
-    ...result.warnings,
+    ...progressDraftQueueWarnings,
+    ...(active?.warnings || []),
     ...(requiredMissingLabels.length ? [`还需补充：${requiredMissingLabels.join("、")}。`] : []),
     ...(optionalMissingLabels.length ? [`可选关联：${optionalMissingLabels.join("、")}。`] : []),
     ...(optionalSummaryLabels.length ? [`可选补充：${optionalSummaryLabels.join("、")}。`] : []),
   ];
 
-  aiProgressPanel.classList.add("is-draft-ready");
+  aiProgressPanel.classList.toggle("is-draft-ready", hasQueue);
   aiProgressStatus.classList.remove("is-error");
-  aiProgressStatus.textContent = feedback.length ? "草稿已生成，请检查并补充后确认保存。" : "草稿已生成，请检查后确认保存。";
+  aiProgressStatus.textContent = hasQueue
+    ? feedback.length ? "草稿已生成，请逐条检查并补充后确认保存。" : "草稿已生成，请逐条检查后确认保存。"
+    : "";
   aiProgressWarnings.innerHTML = "";
   feedback.forEach((message) => {
     const item = document.createElement("li");
@@ -1812,15 +1907,29 @@ function renderProgressDraftFeedback(result) {
   aiProgressWarnings.classList.toggle("hidden", feedback.length === 0);
 }
 
+function selectProgressDraft(itemId) {
+  if (!progressDraftQueue.some((item) => item.id === itemId) || itemId === activeProgressDraftId) return;
+  syncActiveProgressDraftFromForm();
+  activeProgressDraftId = itemId;
+  loadActiveProgressDraftIntoForm();
+  renderProgressDraftQueue();
+}
+
 function clearProgressDraftState({ resetForm }) {
   invalidateProgressDraftRequest();
-  isProgressDraftActive = false;
+  progressDraftQueue = [];
+  activeProgressDraftId = "";
+  suspendedProgressDraftId = "";
+  progressDraftQueueWarnings = [];
   aiProgressDescription.value = "";
   aiProgressStatus.textContent = "";
   aiProgressStatus.classList.remove("is-error");
   aiProgressWarnings.innerHTML = "";
   aiProgressWarnings.classList.add("hidden");
   aiProgressPanel.classList.remove("is-draft-ready");
+  progressDraftQueueList.innerHTML = "";
+  progressDraftQueueSummary.textContent = "";
+  progressDraftQueuePanel.classList.add("hidden");
   discardProgressDraftButton.classList.add("hidden");
 
   if (resetForm) {

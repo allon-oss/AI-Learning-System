@@ -284,6 +284,13 @@
         </div>
         <p id="aiProgressStatus" class="form-message" role="status" aria-live="polite"></p>
         <ul id="aiProgressWarnings" class="ai-progress-warnings hidden" aria-live="polite"></ul>
+        <section id="progressDraftQueuePanel" class="progress-draft-queue hidden" aria-labelledby="progressDraftQueueTitle">
+          <div class="progress-draft-queue-heading">
+            <h3 id="progressDraftQueueTitle">待确认草稿</h3>
+            <p id="progressDraftQueueSummary"></p>
+          </div>
+          <div id="progressDraftQueueList" class="progress-draft-queue-list"></div>
+        </section>
       </section>
 
       <section id="progressFormPanel" class="panel" aria-label="新增学习进度记录">
@@ -416,6 +423,7 @@
     <script src="src/data-model.js"></script>
     <script src="src/mock-ai-provider.js"></script>
     <script src="src/ai-service.js"></script>
+    <script src="src/progress-draft-queue.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>
