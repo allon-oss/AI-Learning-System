@@ -9,6 +9,130 @@ const context = {
   plans: [{ id: "plan-chapter-2", date: "2026-08-25", topicId: "topic-transformer", task: "看完第二章" }],
 };
 
+test("Mock 按顺序生成 Codex 与雅思词汇两条草稿且不把单词数当时长", async () => {
+  const result = await provider.generateProgressDrafts({
+    description: "今天 Codex 学了40分钟，背了40个单词。",
+    referenceDate: "2026-09-01",
+    context: {
+      directions: ["AI 学习", "雅思英语学习"],
+      topics: [
+        { id: "topic-codex", name: "Codex 实践", direction: "AI 学习", isArchived: false },
+        { id: "topic-words", name: "词汇", direction: "雅思英语学习", isArchived: false },
+      ],
+      resources: [],
+      plans: [
+        { id: "plan-codex", date: "2026-09-01", topicId: "topic-codex", task: "练习 Codex" },
+        { id: "plan-words", date: "2026-09-01", topicId: "topic-words", task: "背单词" },
+      ],
+    },
+  });
+
+  assert.equal(result.drafts.length, 2);
+  assert.deepEqual(result.drafts.map((item) => item.suggestedDirection), ["AI 学习", "雅思英语学习"]);
+  assert.deepEqual(result.drafts.map((item) => item.draft.topicId), ["topic-codex", "topic-words"]);
+  assert.deepEqual(result.drafts.map((item) => item.draft.planId), ["plan-codex", "plan-words"]);
+  assert.equal(result.drafts[0].draft.durationMinutes, 40);
+  assert.equal(result.drafts[1].draft.durationMinutes, null);
+  assert.equal(result.drafts[1].draft.reflection, "背了40个单词");
+});
+
+test("Mock 不把同主题资料和计划说明错误拆成多条", async () => {
+  const description = "今天学习 Transformer 入门 45 分钟，使用注意力机制视频，完成看完第二章计划 70%。";
+  const result = await provider.generateProgressDrafts({ description, referenceDate: "2026-08-25", context });
+  assert.equal(result.drafts.length, 1);
+  assert.equal(result.drafts[0].draft.topicId, "topic-transformer");
+  assert.equal(result.drafts[0].draft.resourceId, "resource-attention-video");
+  assert.equal(result.drafts[0].draft.planId, "plan-chapter-2");
+});
+
+test("Mock 用强标点和换行创建有序草稿并继承公共日期", async () => {
+  const multiContext = {
+    directions: ["AI 学习", "雅思英语学习"],
+    topics: [
+      { id: "topic-codex", name: "Codex", direction: "AI 学习", isArchived: false },
+      { id: "topic-words", name: "词汇", direction: "雅思英语学习", isArchived: false },
+    ],
+    resources: [], plans: [],
+  };
+  const result = await provider.generateProgressDrafts({
+    description: "今天 Codex 学了20分钟；词汇复习10分钟\nCodex 又练了15分钟。",
+    referenceDate: "2026-09-01",
+    context: multiContext,
+  });
+  assert.deepEqual(result.drafts.map((item) => item.draft.topicId), ["topic-codex", "topic-words", "topic-codex"]);
+  assert.deepEqual(result.drafts.map((item) => item.draft.date), ["2026-09-01", "2026-09-01", "2026-09-01"]);
+});
+
+test("Mock 只在逗号两侧主题或方向变化时拆分", async () => {
+  const result = await provider.generateProgressDrafts({
+    description: "今天学习 Transformer 入门 45 分钟，使用注意力机制视频，背单词20个",
+    referenceDate: "2026-08-25",
+    context: {
+      directions: ["AI 学习", "雅思英语学习"],
+      topics: [
+        ...context.topics,
+        { id: "topic-words", name: "词汇", direction: "雅思英语学习", isArchived: false },
+      ],
+      resources: context.resources,
+      plans: context.plans,
+    },
+  });
+  assert.equal(result.drafts.length, 2);
+  assert.equal(result.drafts[0].draft.resourceId, "resource-attention-video");
+  assert.equal(result.drafts[1].draft.topicId, "topic-words");
+});
+
+test("Mock 对同日多计划和方向内多主题保持关联为空", async () => {
+  const result = await provider.generateProgressDrafts({
+    description: "今天 Codex 学了30分钟。",
+    referenceDate: "2026-09-01",
+    context: {
+      directions: ["AI 学习"],
+      topics: [
+        { id: "topic-a", name: "提示词", direction: "AI 学习", isArchived: false },
+        { id: "topic-b", name: "智能体", direction: "AI 学习", isArchived: false },
+      ],
+      resources: [],
+      plans: [
+        { id: "plan-a", date: "2026-09-01", topicId: "topic-a", task: "练习 A" },
+        { id: "plan-b", date: "2026-09-01", topicId: "topic-a", task: "练习 B" },
+      ],
+    },
+  });
+  assert.equal(result.drafts[0].suggestedDirection, "AI 学习");
+  assert.equal(result.drafts[0].draft.topicId, null);
+  assert.equal(result.drafts[0].draft.planId, null);
+});
+
+test("Mock 排除归档主题并且数量单位永远不成为分钟", async () => {
+  const descriptions = ["背了40个单词", "做了20道题", "读了3章", "看了2个视频"];
+  const supplied = {
+    directions: ["雅思英语学习"],
+    topics: [{ id: "topic-old", name: "词汇", direction: "雅思英语学习", isArchived: true }],
+    resources: [], plans: [],
+  };
+  for (const description of descriptions) {
+    const result = await provider.generateProgressDrafts({ description, referenceDate: "2026-09-01", context: supplied });
+    assert.equal(result.drafts[0].draft.durationMinutes, null, description);
+  }
+  const archived = await provider.generateProgressDrafts({ description: "今天复习词汇", referenceDate: "2026-09-01", context: supplied });
+  assert.equal(archived.drafts[0].draft.topicId, null);
+});
+
+test("Mock 最多返回十条并且不修改输入上下文", async () => {
+  const supplied = {
+    directions: ["AI 学习"],
+    topics: [{ id: "topic-codex", name: "Codex", direction: "AI 学习", isArchived: false }],
+    resources: [], plans: [],
+  };
+  const before = structuredClone(supplied);
+  const description = Array.from({ length: 11 }, (_, index) => `Codex 第${index + 1}段学习`).join("；");
+  const result = await provider.generateProgressDrafts({ description, referenceDate: "2026-09-01", context: supplied });
+  assert.equal(result.drafts.length, 10);
+  assert.match(result.warnings.join(" "), /最多生成 10 条/);
+  assert.deepEqual(supplied, before);
+});
+
 test("Mock 根据自由描述生成完整学习进度草稿", async () => {
   const description = "今天学习 Transformer 入门 45 分钟，使用注意力机制视频，完成今天的看完第二章计划 70%，还需要继续理解多头注意力。";
   const result = await provider.generateProgressDraft({ description, referenceDate: "2026-08-25", context });
