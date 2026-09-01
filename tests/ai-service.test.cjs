@@ -3,7 +3,11 @@ const assert = require("node:assert/strict");
 const vm = require("node:vm");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createAIService, validateProgressDraftResult } = require("../src/ai-service.js");
+const {
+  createAIService,
+  validateProgressDraftResult,
+  validateProgressDraftsResult,
+} = require("../src/ai-service.js");
 
 const validResult = {
   draft: {
@@ -14,85 +18,137 @@ const validResult = {
   warnings: ["未匹配到关联资料，可手动选择或留空。"],
 };
 
-test("AI Service 异步委托 Provider 并返回统一草稿", async () => {
+const validMultiResult = {
+  drafts: [
+    {
+      sourceText: "Codex 学了40分钟",
+      suggestedDirection: "AI 学习",
+      draft: {
+        date: "2026-09-01", topicId: "topic-codex", resourceId: null, planId: "plan-codex",
+        durationMinutes: 40, completionPercent: null, reflection: "Codex 学了40分钟",
+      },
+      missingFields: ["resourceId", "completionPercent"], warnings: [],
+    },
+    {
+      sourceText: "背了40个单词",
+      suggestedDirection: "雅思英语学习",
+      draft: {
+        date: "2026-09-01", topicId: "topic-words", resourceId: null, planId: "plan-words",
+        durationMinutes: null, completionPercent: null, reflection: "背了40个单词",
+      },
+      missingFields: ["resourceId", "durationMinutes", "completionPercent"], warnings: [],
+    },
+  ],
+  warnings: [],
+};
+
+const allowedDirections = ["AI 学习", "雅思英语学习"];
+
+function makeRequest() {
+  return {
+    description: "学习两项",
+    referenceDate: "2026-09-01",
+    context: { directions: allowedDirections, topics: [], resources: [], plans: [] },
+  };
+}
+
+test("AI Service 异步委托多草稿 Provider", async () => {
   let received;
-  const service = createAIService({ async generateProgressDraft(request) { received = request; return validResult; } });
-  const request = { description: "学习 AI", referenceDate: "2026-08-25", context: {} };
-  const promise = service.generateProgressDraft(request);
+  const service = createAIService({
+    async generateProgressDrafts(request) { received = request; return validMultiResult; },
+  });
+  const request = makeRequest();
+  const promise = service.generateProgressDrafts(request);
   assert.equal(typeof promise.then, "function");
-  assert.deepEqual(await promise, validResult);
+  assert.deepEqual(await promise, validMultiResult);
   assert.equal(received, request);
 });
 
-test("AI Service 拒绝不完整或越界返回值", async () => {
-  const incomplete = createAIService({ async generateProgressDraft() {
-    return { draft: { date: null }, missingFields: [], warnings: [] };
-  } });
-  await assert.rejects(incomplete.generateProgressDraft({}), /无效的学习进度草稿/);
-
-  const invalidPercent = createAIService({ async generateProgressDraft() {
-    return { ...validResult, draft: { ...validResult.draft, completionPercent: 101 } };
-  } });
-  await assert.rejects(invalidPercent.generateProgressDraft({}), /无效/);
-});
-
-test("替换 Provider 不改变公开接口", async () => {
-  const service = createAIService({ async generateProgressDraft() { return validResult; } });
+test("迁移期间保留单草稿兼容方法并执行原有校验", async () => {
+  const service = createAIService({
+    async generateProgressDrafts() { return validMultiResult; },
+    async generateProgressDraft() { return validResult; },
+  });
   assert.deepEqual(await service.generateProgressDraft({}), validResult);
+  assert.throws(() => validateProgressDraftResult({ ...validResult, extra: true }), /无效的学习进度草稿/);
 });
 
-test("Provider 不存在或接口错误时创建 Service 失败", () => {
-  assert.throws(() => createAIService(), /AI Provider 未实现 generateProgressDraft/);
-  assert.throws(() => createAIService({}), /AI Provider 未实现 generateProgressDraft/);
+test("Provider 不存在或缺少多草稿接口时创建 Service 失败", () => {
+  assert.throws(() => createAIService(), /AI Provider 未实现 generateProgressDrafts/);
+  assert.throws(() => createAIService({}), /AI Provider 未实现 generateProgressDrafts/);
+  assert.throws(() => createAIService({ generateProgressDrafts: true }), /AI Provider 未实现 generateProgressDrafts/);
 });
 
 test("Provider 抛错时 Service Promise 拒绝并保留原错误", async () => {
   const error = new Error("provider unavailable");
-  const service = createAIService({ async generateProgressDraft() { throw error; } });
-  await assert.rejects(service.generateProgressDraft({}), (actual) => actual === error);
+  const service = createAIService({ async generateProgressDrafts() { throw error; } });
+  await assert.rejects(service.generateProgressDrafts(makeRequest()), (actual) => actual === error);
 });
 
-test("校验器拒绝未知草稿键、非法缺失字段和非字符串警告", () => {
-  const extraKey = { ...validResult, draft: { ...validResult.draft, extra: true } };
-  const badMissingField = { ...validResult, missingFields: ["unknown"] };
-  const badWarnings = { ...validResult, warnings: ["ok", 1] };
-  for (const result of [extraKey, badMissingField, badWarnings]) {
-    assert.throws(() => validateProgressDraftResult(result), /无效的学习进度草稿/);
+test("多草稿校验器拒绝空数组、超过十条和重复对象引用", () => {
+  assert.throws(() => validateProgressDraftsResult({ drafts: [], warnings: [] }, allowedDirections), /无效/);
+  assert.throws(() => validateProgressDraftsResult({
+    drafts: Array.from({ length: 11 }, () => structuredClone(validMultiResult.drafts[0])), warnings: [],
+  }, allowedDirections), /无效/);
+  const item = validMultiResult.drafts[0];
+  assert.throws(() => validateProgressDraftsResult({ drafts: [item, item], warnings: [] }, allowedDirections), /无效/);
+});
+
+test("多草稿校验器拒绝未知顶层键和草稿项键", () => {
+  assert.throws(() => validateProgressDraftsResult({ ...validMultiResult, extra: true }, allowedDirections), /无效/);
+  const itemWithExtra = { ...validMultiResult.drafts[0], extra: true };
+  assert.throws(() => validateProgressDraftsResult({ drafts: [itemWithExtra], warnings: [] }, allowedDirections), /无效/);
+  const inherited = Object.create({ warnings: [] });
+  inherited.drafts = validMultiResult.drafts;
+  assert.throws(() => validateProgressDraftsResult(inherited, allowedDirections), /无效/);
+});
+
+test("多草稿校验器拒绝非法来源片段和建议方向", () => {
+  const base = validMultiResult.drafts[0];
+  const invalidItems = [
+    { ...base, sourceText: " " },
+    { ...base, sourceText: "x".repeat(501) },
+    { ...base, suggestedDirection: 1 },
+    { ...base, suggestedDirection: "不存在的方向" },
+  ];
+  for (const item of invalidItems) {
+    assert.throws(() => validateProgressDraftsResult({ drafts: [item], warnings: [] }, allowedDirections), /无效/);
   }
 });
 
-test("校验器拒绝顶层额外键", () => {
-  assert.throws(() => validateProgressDraftResult({ ...validResult, extra: true }), /无效的学习进度草稿/);
+test("多草稿校验器拒绝不完整、越界或超长草稿字段", () => {
+  const base = validMultiResult.drafts[0];
+  const invalidDrafts = [
+    { date: "2026-09-01" },
+    { ...base.draft, durationMinutes: 0 },
+    { ...base.draft, completionPercent: 101 },
+    { ...base.draft, reflection: "x".repeat(501) },
+  ];
+  for (const draft of invalidDrafts) {
+    assert.throws(() => validateProgressDraftsResult({ drafts: [{ ...base, draft }], warnings: [] }, allowedDirections), /无效/);
+  }
 });
 
-test("校验器拒绝继承的顶层数组属性", () => {
-  const inherited = Object.create({ missingFields: validResult.missingFields, warnings: validResult.warnings });
-  inherited.draft = validResult.draft;
-  assert.throws(() => validateProgressDraftResult(inherited), /无效的学习进度草稿/);
-});
-
-test("校验器拒绝非枚举必需键被无关枚举键替代", () => {
-  const bypass = { missingFields: validResult.missingFields, warnings: validResult.warnings, unrelated: true };
-  Object.defineProperty(bypass, "draft", { value: validResult.draft, enumerable: false });
-  assert.throws(() => validateProgressDraftResult(bypass), /无效的学习进度草稿/);
-});
-
-test("校验器拒绝非对象结果和非法字段值", () => {
+test("多草稿校验器拒绝非法缺失字段和非字符串警告", () => {
+  const base = validMultiResult.drafts[0];
   const invalidResults = [
-    null,
-    { ...validResult, draft: { ...validResult.draft, durationMinutes: 0 } },
-    { ...validResult, draft: { ...validResult.draft, reflection: "x".repeat(501) } },
-    { ...validResult, missingFields: "resourceId" },
+    { drafts: [{ ...base, missingFields: ["unknown"] }], warnings: [] },
+    { drafts: [{ ...base, warnings: [1] }], warnings: [] },
+    { drafts: [base], warnings: [1] },
   ];
   for (const result of invalidResults) {
-    assert.throws(() => validateProgressDraftResult(result), /无效的学习进度草稿/);
+    assert.throws(() => validateProgressDraftsResult(result, allowedDirections), /无效/);
   }
 });
 
-test("浏览器环境有 MockAIProvider 时建立默认 AIService", () => {
+test("浏览器环境有 MockAIProvider 时建立默认多草稿 AIService", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "src", "ai-service.js"), "utf8");
-  const provider = { async generateProgressDraft() { return validResult; } };
+  const provider = {
+    async generateProgressDrafts() { return validMultiResult; },
+    async generateProgressDraft() { return validResult; },
+  };
   const context = { window: { MockAIProvider: provider } };
   vm.runInNewContext(source, context);
+  assert.equal(typeof context.window.AIService.generateProgressDrafts, "function");
   assert.equal(typeof context.window.AIService.generateProgressDraft, "function");
 });
