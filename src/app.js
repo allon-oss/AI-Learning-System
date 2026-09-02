@@ -668,7 +668,6 @@ progressForm.addEventListener("submit", (event) => {
   }
 
   const now = new Date().toISOString();
-  let savedProgressId = editingProgressId;
   let nextProgressRecords;
 
   if (isEditing) {
@@ -704,7 +703,6 @@ progressForm.addEventListener("submit", (event) => {
     };
 
     nextProgressRecords = [progress, ...progressRecords];
-    savedProgressId = progress.id;
   }
 
   isProgressSaving = true;
@@ -1766,6 +1764,11 @@ async function generateProgressDraftFromDescription() {
     return;
   }
 
+  if (progressDraftQueue.length && !window.confirm("重新生成会替换全部未确认草稿，是否继续？")) {
+    return;
+  }
+  syncActiveProgressDraftFromForm();
+
   isProgressDraftGenerating = true;
   generateProgressDraftButton.disabled = true;
   aiProgressStatus.classList.remove("is-error");
@@ -2006,14 +2009,32 @@ function invalidateProgressDraftRequest() {
   generateProgressDraftButton.disabled = false;
 }
 
+function suspendProgressDraftQueue() {
+  invalidateProgressDraftRequest();
+  syncActiveProgressDraftFromForm();
+  suspendedProgressDraftId = activeProgressDraftId;
+  activeProgressDraftId = "";
+  aiProgressPanel.classList.add("hidden");
+}
+
+function restoreProgressDraftQueue() {
+  aiProgressPanel.classList.remove("hidden");
+  if (!progressDraftQueue.length) return;
+  activeProgressDraftId = progressDraftQueue.some((item) => item.id === suspendedProgressDraftId)
+    ? suspendedProgressDraftId
+    : progressDraftQueue[0].id;
+  suspendedProgressDraftId = "";
+  renderProgressDraftQueue();
+  loadActiveProgressDraftIntoForm();
+}
+
 function startProgressEditing(progressId) {
   const progress = progressRecords.find((item) => item.id === progressId);
   if (!progress) {
     return;
   }
 
-  clearProgressDraftState({ resetForm: false });
-  aiProgressPanel.classList.add("hidden");
+  suspendProgressDraftQueue();
   editingProgressId = progress.id;
   progressFormPanel.setAttribute("aria-label", "编辑学习进度记录");
   progressFormTitle.textContent = "编辑进度记录";
@@ -2040,7 +2061,6 @@ function startProgressEditing(progressId) {
 function resetProgressForm() {
   editingProgressId = "";
   progressForm.reset();
-  aiProgressPanel.classList.remove("hidden");
   progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
   progressFormTitle.textContent = "新增进度记录";
   progressFormDescription.textContent = "可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。";
@@ -2049,6 +2069,11 @@ function resetProgressForm() {
   setProgressDateDefaults();
   updateProgressTopicOptions();
   updateProgressRelatedOptions();
+  if (progressDraftQueue.length && suspendedProgressDraftId) {
+    restoreProgressDraftQueue();
+  } else {
+    aiProgressPanel.classList.remove("hidden");
+  }
 }
 
 function deleteProgress(progressId) {

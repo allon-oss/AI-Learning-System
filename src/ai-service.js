@@ -31,17 +31,6 @@
     if (!Array.isArray(warnings) || warnings.some((warning) => typeof warning !== "string")) invalidResult();
   }
 
-  function validateProgressDraftResult(result) {
-    if (!result || typeof result !== "object" || Array.isArray(result)) invalidResult();
-    const resultKeys = Object.keys(result);
-    const expectedResultKeys = ["draft", "missingFields", "warnings"];
-    if (resultKeys.length !== expectedResultKeys.length || resultKeys.some((key) => !expectedResultKeys.includes(key))) invalidResult();
-    validateDraft(result.draft);
-    validateMissingFields(result.missingFields);
-    validateWarnings(result.warnings);
-    return result;
-  }
-
   function validateProviderDraftItem(item, allowedDirections) {
     if (!item || typeof item !== "object" || Array.isArray(item)) invalidResult();
     const keys = Object.keys(item);
@@ -71,22 +60,16 @@
     if (!provider || typeof provider.generateProgressDrafts !== "function") {
       throw new Error("AI Provider 未实现 generateProgressDrafts。");
     }
-    const service = {
+    return {
       async generateProgressDrafts(request) {
         const allowedDirections = Array.isArray(request?.context?.directions) ? request.context.directions : [];
         return validateProgressDraftsResult(await provider.generateProgressDrafts(request), allowedDirections);
       },
     };
-    if (typeof provider.generateProgressDraft === "function") {
-      service.generateProgressDraft = async (request) => validateProgressDraftResult(
-        await provider.generateProgressDraft(request),
-      );
-    }
-    return service;
   }
 
   if (globalScope.MockAIProvider) globalScope.AIService = createAIService(globalScope.MockAIProvider);
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { createAIService, validateProgressDraftResult, validateProgressDraftsResult };
+    module.exports = { createAIService, validateProgressDraftsResult };
   }
 })(typeof window !== "undefined" ? window : globalThis);

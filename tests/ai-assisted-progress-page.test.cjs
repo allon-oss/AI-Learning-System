@@ -50,6 +50,14 @@ function fixture({ progress = [] } = {}) {
   };
 }
 
+function offsetDate(value, days) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function multiTopicFixture({ progress = [] } = {}) {
   const today = getLocalToday();
   return {
@@ -107,6 +115,21 @@ async function generateTwoDrafts(page) {
   await page.locator("#aiProgressDescription").fill("今天 Codex 学了40分钟，背了40个单词。");
   await page.locator("#generateProgressDraftButton").click();
   await page.getByText("共 2 条，待处理 2 条").waitFor();
+}
+
+function controlledDraftResult(reflection = "过期草稿") {
+  return {
+    drafts: [{
+      sourceText: reflection,
+      suggestedDirection: "AI 学习",
+      draft: {
+        date: getLocalToday(), topicId: "topic-transformer", resourceId: null, planId: null,
+        durationMinutes: 45, completionPercent: 70, reflection,
+      },
+      missingFields: ["resourceId", "planId"], warnings: [],
+    }],
+    warnings: [],
+  };
 }
 
 test("多主题描述生成有序队列并在切换时保留各自修改", async (t) => {
@@ -217,6 +240,137 @@ test("放弃当前草稿必须确认且不会写入进度存储", async (t) => {
   assert.deepEqual(pageErrors, []);
 });
 
+test("重新生成取消或失败时保留旧队列和当前修改，成功时才替换", async (t) => {
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+  await page.locator("#progressCompletion").fill("70");
+  const oldCards = await page.locator("[data-progress-draft-id]").allTextContents();
+  await page.evaluate(() => {
+    window.__generateCalls = 0;
+    const original = window.AIService.generateProgressDrafts;
+    window.__originalGenerateProgressDrafts = original;
+    window.AIService.generateProgressDrafts = async (...args) => {
+      window.__generateCalls += 1;
+      return original(...args);
+    };
+  });
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.locator("#generateProgressDraftButton").click();
+  assert.equal(await page.evaluate(() => window.__generateCalls), 0);
+  assert.deepEqual(await page.locator("[data-progress-draft-id]").allTextContents(), oldCards);
+
+  await page.evaluate(() => {
+    window.AIService.generateProgressDrafts = async () => { throw new Error("provider failed"); };
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByText("草稿生成失败，请重试或手动填写。").waitFor();
+  assert.deepEqual(await page.locator("[data-progress-draft-id]").allTextContents(), oldCards);
+  assert.equal(await page.locator("#progressCompletion").inputValue(), "70");
+
+  await page.evaluate(() => { window.AIService.generateProgressDrafts = window.__originalGenerateProgressDrafts; });
+  await page.locator("#aiProgressDescription").fill("今天 Codex 学了20分钟。");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByText("共 1 条，待处理 1 条").waitFor();
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 1);
+  assert.equal(await page.locator("#progressDuration").inputValue(), "20");
+  assert.deepEqual(pageErrors, []);
+});
+
+test("编辑已有进度时暂存队列并在保存后恢复同一当前草稿", async (t) => {
+  const today = getLocalToday();
+  const existing = {
+    id: "progress-existing", date: today, topicId: "topic-codex", resourceId: null, planId: "plan-codex",
+    durationMinutes: 30, completionPercent: 50, reflection: "原记录",
+    createdAt: `${today}T00:00:00.000Z`, updatedAt: `${today}T00:00:00.000Z`,
+  };
+  const { page, pageErrors } = await startPage(t, multiTopicFixture({ progress: [existing] }));
+  await generateTwoDrafts(page);
+  const cards = page.locator("[data-progress-draft-id]");
+  await page.locator("#progressCompletion").fill("70");
+  await cards.nth(1).getByRole("button").click();
+  await page.locator("#progressDuration").fill("25");
+  await page.locator("#progressCompletion").fill("80");
+  const activeId = await page.locator("[data-progress-draft-id].is-active").getAttribute("data-progress-draft-id");
+
+  await page.locator("[data-edit-progress='progress-existing']").click();
+  assert.equal(await page.locator("#aiProgressPanel").isVisible(), false);
+  await page.locator("#progressReflection").fill("已更新记录");
+  await page.locator("#progressSubmitButton").click();
+
+  assert.equal(await page.locator("#aiProgressPanel").isVisible(), true);
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 2);
+  assert.equal(await page.locator("[data-progress-draft-id].is-active").getAttribute("data-progress-draft-id"), activeId);
+  assert.equal(await page.locator("#progressDuration").inputValue(), "25");
+  assert.equal(await page.locator("#progressCompletion").inputValue(), "80");
+  const saved = await getStoredProgress(page);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].reflection, "已更新记录");
+
+  await page.locator("[data-edit-progress='progress-existing']").click();
+  await page.locator("#progressReflection").fill("取消这次修改");
+  await page.locator("#cancelProgressEditButton").click();
+  assert.equal(await page.locator("[data-progress-draft-id]").count(), 2);
+  assert.equal(await page.locator("[data-progress-draft-id].is-active").getAttribute("data-progress-draft-id"), activeId);
+  assert.equal(await page.locator("#progressDuration").inputValue(), "25");
+  assert.equal(await page.locator("#progressCompletion").inputValue(), "80");
+  assert.deepEqual(pageErrors, []);
+});
+
+test("删除资料或计划后只清理对应队列草稿的关联", async (t) => {
+  const storage = multiTopicFixture();
+  const today = getLocalToday();
+  storage["personal-learning-system-resources"] = [
+    { id: "resource-codex", title: "Codex 文档", topicId: "topic-codex", type: "文档", status: "学习中", createdAt: today, updatedAt: today },
+    { id: "resource-words", title: "词汇卡片", topicId: "topic-words", type: "卡片", status: "学习中", createdAt: today, updatedAt: today },
+  ];
+  const { page, pageErrors } = await startPage(t, storage);
+  await page.locator("#aiProgressDescription").fill("今天 Codex 学了40分钟，使用 Codex 文档；背了40个单词，使用词汇卡片。");
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByText("共 2 条，待处理 2 条").waitFor();
+  const cards = page.locator("[data-progress-draft-id]");
+  assert.equal(await page.locator("#progressResource").inputValue(), "resource-codex");
+  assert.equal(await page.locator("#progressPlan").inputValue(), "plan-codex");
+
+  await page.evaluate(() => { resources = resources.filter((item) => item.id !== "resource-codex"); });
+  await cards.nth(1).getByRole("button").click();
+  assert.equal(await page.locator("#progressResource").inputValue(), "resource-words");
+  await cards.nth(0).getByRole("button").click();
+  assert.equal(await page.locator("#progressResource").inputValue(), "");
+  assert.equal(await page.locator("#progressPlan").inputValue(), "plan-codex");
+
+  await page.evaluate(() => { plans = plans.filter((item) => item.id !== "plan-words"); });
+  await cards.nth(1).getByRole("button").click();
+  assert.equal(await page.locator("#progressResource").inputValue(), "resource-words");
+  assert.equal(await page.locator("#progressPlan").inputValue(), "");
+  await cards.nth(0).getByRole("button").click();
+  assert.equal(await page.locator("#progressPlan").inputValue(), "plan-codex");
+  assert.deepEqual(pageErrors, []);
+});
+
+test("跨午夜后旧草稿保留原日期且新生成草稿使用新日期", async (t) => {
+  const today = getLocalToday();
+  const tomorrow = offsetDate(today, 1);
+  const { page, pageErrors } = await startPage(t, multiTopicFixture());
+  await generateTwoDrafts(page);
+  await page.evaluate((nextDate) => { getToday = () => nextDate; }, tomorrow);
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+
+  assert.equal(await page.locator("#progressDate").inputValue(), today);
+  await page.locator("#progressCompletion").fill("70");
+  await page.getByRole("button", { name: "确认并保存此条" }).click();
+  assert.equal((await getStoredProgress(page))[0].date, today);
+
+  await page.locator("#aiProgressDescription").fill("今天 Codex 学了20分钟。");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#generateProgressDraftButton").click();
+  await page.getByText("共 1 条，待处理 1 条").waitFor();
+  assert.equal(await page.locator("#progressDate").inputValue(), tomorrow);
+  assert.deepEqual(pageErrors, []);
+});
+
 test("生成的 AI 草稿保持可编辑，确认后才按修改值保存", async (t) => {
   const { page, pageErrors } = await startPage(t, fixture());
 
@@ -274,7 +428,7 @@ test("草稿生成失败会保留自由描述和已手动填写的表单，且�
   await page.locator("#progressCompletion").fill("40");
   await page.locator("#aiProgressDescription").fill(description);
   await page.evaluate(() => {
-    window.AIService.generateProgressDraft = async () => {
+    window.AIService.generateProgressDrafts = async () => {
       throw new Error("provider failed");
     };
   });
@@ -334,17 +488,13 @@ test("编辑已有进度会使尚未完成的生成请求失效", async (t) => {
     const oldRequest = new Promise((resolve) => {
       window.__resolveProgressDraft = resolve;
     });
-    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+    window.AIService.generateProgressDrafts = () => oldRequest.finally(() => {
       window.__oldProgressDraftSettled = true;
     });
   });
   await page.locator("#generateProgressDraftButton").click();
   await page.locator("[data-edit-progress='progress-existing']").click();
-  await page.evaluate(() => window.__resolveProgressDraft({
-    draft: { date: new Date().toISOString().slice(0, 10), topicId: "topic-transformer", resourceId: null, planId: null, durationMinutes: 45, completionPercent: 70, reflection: "过期草稿" },
-    missingFields: ["resourceId", "planId"],
-    warnings: [],
-  }));
+  await page.evaluate((result) => window.__resolveProgressDraft(result), controlledDraftResult());
   await waitForControlledDraftSettlement(page);
 
   assert.equal(await page.locator("#aiProgressPanel").isVisible(), false);
@@ -366,18 +516,15 @@ test("放弃草稿会使尚未完成的重新生成请求失效", async (t) => {
     const oldRequest = new Promise((resolve) => {
       window.__resolveProgressDraft = resolve;
     });
-    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+    window.AIService.generateProgressDrafts = () => oldRequest.finally(() => {
       window.__oldProgressDraftSettled = true;
     });
   });
+  page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#generateProgressDraftButton").click();
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#discardProgressDraftButton").click();
-  await page.evaluate(() => window.__resolveProgressDraft({
-    draft: { date: new Date().toISOString().slice(0, 10), topicId: "topic-transformer", resourceId: null, planId: null, durationMinutes: 45, completionPercent: 70, reflection: "过期草稿" },
-    missingFields: ["resourceId", "planId"],
-    warnings: [],
-  }));
+  await page.evaluate((result) => window.__resolveProgressDraft(result), controlledDraftResult());
   await waitForControlledDraftSettlement(page);
 
   assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
@@ -399,10 +546,11 @@ test("放弃草稿后旧请求拒绝不会显示错误或重新激活草稿", as
     const oldRequest = new Promise((resolve, reject) => {
       window.__rejectProgressDraft = reject;
     });
-    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+    window.AIService.generateProgressDrafts = () => oldRequest.finally(() => {
       window.__oldProgressDraftSettled = true;
     });
   });
+  page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#generateProgressDraftButton").click();
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#discardProgressDraftButton").click();
@@ -429,7 +577,7 @@ test("生成期间禁用按钮以避免重复调用", async (t) => {
       window.__progressDraftCalls += 1;
       window.__resolveProgressDraft = resolve;
     });
-    window.AIService.generateProgressDraft = () => oldRequest.finally(() => {
+    window.AIService.generateProgressDrafts = () => oldRequest.finally(() => {
       window.__oldProgressDraftSettled = true;
     });
   });
@@ -440,11 +588,10 @@ test("生成期间禁用按钮以避免重复调用", async (t) => {
   });
   assert.equal(await page.locator("#generateProgressDraftButton").isDisabled(), true);
   assert.equal(await page.evaluate(() => window.__progressDraftCalls), 1);
-  await page.evaluate(() => window.__resolveProgressDraft({
-    draft: { date: new Date().toISOString().slice(0, 10), topicId: "topic-transformer", resourceId: null, planId: null, durationMinutes: 45, completionPercent: 70, reflection: "今天学习 Transformer 入门 45 分钟，完成 70%" },
-    missingFields: ["resourceId", "planId"],
-    warnings: [],
-  }));
+  await page.evaluate(
+    (result) => window.__resolveProgressDraft(result),
+    controlledDraftResult("今天学习 Transformer 入门 45 分钟，完成 70%"),
+  );
   await waitForControlledDraftSettlement(page);
   await page.getByRole("button", { name: "确认并保存" }).waitFor();
 

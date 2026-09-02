@@ -5,18 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   createAIService,
-  validateProgressDraftResult,
   validateProgressDraftsResult,
 } = require("../src/ai-service.js");
-
-const validResult = {
-  draft: {
-    date: "2026-08-25", topicId: "topic-ai", resourceId: null, planId: null,
-    durationMinutes: 45, completionPercent: 70, reflection: "学习 AI",
-  },
-  missingFields: ["resourceId", "planId"],
-  warnings: ["未匹配到关联资料，可手动选择或留空。"],
-};
 
 const validMultiResult = {
   drafts: [
@@ -62,15 +52,6 @@ test("AI Service 异步委托多草稿 Provider", async () => {
   assert.equal(typeof promise.then, "function");
   assert.deepEqual(await promise, validMultiResult);
   assert.equal(received, request);
-});
-
-test("迁移期间保留单草稿兼容方法并执行原有校验", async () => {
-  const service = createAIService({
-    async generateProgressDrafts() { return validMultiResult; },
-    async generateProgressDraft() { return validResult; },
-  });
-  assert.deepEqual(await service.generateProgressDraft({}), validResult);
-  assert.throws(() => validateProgressDraftResult({ ...validResult, extra: true }), /无效的学习进度草稿/);
 });
 
 test("Provider 不存在或缺少多草稿接口时创建 Service 失败", () => {
@@ -145,10 +126,8 @@ test("浏览器环境有 MockAIProvider 时建立默认多草稿 AIService", () 
   const source = fs.readFileSync(path.join(__dirname, "..", "src", "ai-service.js"), "utf8");
   const provider = {
     async generateProgressDrafts() { return validMultiResult; },
-    async generateProgressDraft() { return validResult; },
   };
   const context = { window: { MockAIProvider: provider } };
   vm.runInNewContext(source, context);
   assert.equal(typeof context.window.AIService.generateProgressDrafts, "function");
-  assert.equal(typeof context.window.AIService.generateProgressDraft, "function");
 });
