@@ -6,6 +6,8 @@
 
 > 初始内容为虚构示例。描述生成草稿采用本地规则模拟，未接入真实大模型；本项目不提供登录和云同步。
 
+当前版本已完成公开作品展示版改造，以下功能均可在本地体验。各版本的设计、实现和验收过程保留在[项目演进记录](docs/project-status.md)中。
+
 ## 界面预览
 
 首页工作台：简短介绍、已有学习概览和今日任务。
@@ -78,7 +80,7 @@ npm test
 
 请按实际安装位置设置 `EDGE_EXE`。使用 Edge 时仍需安装 Playwright 包，但不必再下载 Chromium。
 
-`npm test` 执行的是 `node --test tests/*.test.cjs`。本次验证环境为 Node.js 24、Playwright 1.62.1 和 Microsoft Edge；由于执行环境没有 npm，使用了相同的 Node 测试命令。测试详情见[项目状态](docs/project-status.md)。
+`npm test` 执行的是 `node --test tests/*.test.cjs`。公开展示版的验证环境为 Node.js 24、Playwright 1.62.1 和 Microsoft Edge；由于执行环境没有 npm，使用了相同的 Node 测试命令。测试详情见[项目演进与验收记录](docs/project-status.md)。
 
 ## 能力与数据边界
 
@@ -98,10 +100,13 @@ npm test
 
 项目从五个基础模块逐步发展到主题治理、自定义方向、日期补录、批量计划及多主题草稿。公开展示版保留这些功能，主要重组页面、统一文案并补充可复现的示例。真实 AI、同步等能力只属于后续探索，不代表已实现或发布承诺。
 
-- [项目状态与验收记录](docs/project-status.md)
+- [项目演进与验收记录](docs/project-status.md)
 - [早期路线图](docs/project-plan.md)与[V1 功能规划](docs/feature-list.md)（历史文档）
 - [多主题草稿需求与边界](docs/v1.5-multi-topic-ai-progress-draft-requirements.md)
 - [批量今日计划需求](docs/batch-today-plan-entry-requirements.md)
-- [新手项目说明](docs/newbie-guide.md)
+- [新手入门与体验说明](docs/newbie-guide.md)
+- [历史问题与后续处理](tests/issues.md)
 
-修改项目后，先运行测试、更新项目状态文档，再检查 Git 提交范围。公开发布前另行确认公开内容，不提交凭据、私密配置或个人学习数据。
+早期需求、实施计划和验收清单保留当时的版本名称、范围与待办，用于理解演进过程。它们不代表当前版本仍待开发；现有能力以本 README 和项目演进记录顶部的作品概况为准。
+
+后续维护时，按变更范围完成验证、更新项目演进记录，再检查 Git 提交范围。公开发布前另行确认公开内容，不提交凭据、私密配置或个人学习数据。
