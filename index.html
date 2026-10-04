@@ -3,24 +3,227 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Personal Learning System</title>
+    <title>AI Learning System · 个人学习工作台</title>
+    <meta name="description" content="把学习计划、资料、笔记与进度放在一起的个人学习工作台。提供虚构示例和本地规则模拟的描述生成草稿体验。" />
     <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="page-header">
+<header class="site-header">
+  <a class="brand" href="#home">AI Learning System<span>个人学习工作台</span></a>
+  <nav class="site-nav" aria-label="工作台导航">
+    <a href="#plans">计划</a><a href="#records">记录</a><a href="#topics">主题</a><a href="#resources">资料</a><a href="#notes">笔记</a>
+  </nav>
+</header>
+<section id="home" class="hero" aria-labelledby="heroTitle">
+  <p class="eyebrow">AI Learning System · 个人学习工作台</p>
+  <h1 id="heroTitle">让每次学习，<br />都有记录。</h1>
+  <p class="hero-description">把学习计划、资料、笔记与进度放在一起，让每次学习都有记录。</p>
+  <p class="hero-context">从 AI 学习与雅思备考出发，探索更有条理的个人学习方式。</p>
+  <div class="hero-actions"><a class="primary-button" href="#plans">查看今日任务 <span aria-hidden="true">↗</span></a><a class="secondary-button" href="#aiProgressPanel">体验描述生成草稿</a></div>
+  <p class="demo-notice">本作品提供示例数据，初始内容为虚构示例。修改保存在当前浏览器，不会自动跨设备同步。描述生成草稿采用本地规则模拟，未接入真实大模型。</p>
+  <p id="demoStorageNotice" class="form-message is-error hidden" role="alert">浏览器存储不可用，示例数据未能完整载入。请允许本站使用本地存储后刷新；保存失败时，请保留输入内容。</p>
+</section>
+
+<section class="panel progress-overview-panel showcase-overview">
+          <div class="panel-heading">
+            <h2>学习概览</h2>
+            <p>基于当前浏览器已保存的学习记录统计，初始数值来自虚构示例。</p>
+          </div>
+          <div id="progressOverview" class="detail-grid compact-grid"></div>
+        </section>
+
+<section id="plans" class="workspace-section" aria-labelledby="plansTitle">
+<header class="page-header plan-header">
         <div>
-          <p class="eyebrow">V1 第一个核心功能</p>
-          <h1>学习主题管理</h1>
-          <p class="intro">先记录你正在学习的方向、主题和状态，后续资料、计划、笔记都会关联到这里。</p>
+          <h2 id="plansTitle">学习计划</h2>
+          <p id="planDate" class="intro"></p>
+        </div>
+      </header>
+
+<div class="layout plan-layout"><section class="panel">
+          <div class="panel-heading">
+            <h2 id="planListHeading">今天的任务</h2>
+            <div class="plan-view-tabs" role="tablist" aria-label="计划视图">
+              <button class="small-button" type="button" data-plan-view="today" role="tab">今天</button>
+              <button class="small-button" type="button" data-plan-view="future" role="tab">未来</button>
+              <button class="small-button" type="button" data-plan-view="history" role="tab">历史</button>
+            </div>
+            <p id="planSummary"></p>
+            <p id="planSaveMessage" class="form-message" role="status" aria-live="polite"></p>
+          </div>
+          <div id="planList" class="plan-list"></div>
+        </section>
+<section class="panel">
+          <div class="panel-heading">
+            <h2>新增学习计划</h2>
+            <p>普通计划用于今天或未来；如果忘记记录过去的安排，请主动选择“历史补录”。</p>
+          </div>
+          <div class="plan-entry-tabs" role="tablist" aria-label="计划录入方式">
+            <button class="small-button selected" type="button" role="tab" aria-selected="true" aria-controls="planForm" data-plan-entry-mode="single">单条录入</button>
+            <button class="small-button" type="button" role="tab" aria-selected="false" aria-controls="batchPlanForm" data-plan-entry-mode="batch">批量今日计划</button>
+          </div>
+          <form id="planForm" class="topic-form">
+            <label>
+              学习主题
+              <select id="planTopic" name="topicId" required></select>
+            </label>
+
+            <label>
+              学习资料（可选）
+              <select id="planResource" name="resourceId"></select>
+            </label>
+
+            <div class="plan-entry-mode-field">
+              <label for="planEntryMode">记录方式</label>
+              <select id="planEntryMode" name="entryMode" required>
+                <option value="scheduled">普通计划（今天或未来）</option>
+                <option value="backfill">历史补录（事后记录）</option>
+              </select>
+            </div>
+
+            <div class="plan-date-field">
+              <label for="planScheduleDate">计划日期</label>
+              <input id="planScheduleDate" name="date" type="date" aria-describedby="planDateError" required />
+              <p id="planDateError" class="form-message is-error" role="alert" aria-live="polite"></p>
+            </div>
+
+            <label>
+              预计时长（分钟，可选）
+              <input id="planEstimatedMinutes" name="estimatedMinutes" type="number" min="1" step="1" placeholder="例如：45" />
+            </label>
+
+            <label>
+              优先级
+              <select id="planPriority" name="priority" required>
+                <option value="高">高</option>
+                <option value="中" selected>中</option>
+                <option value="低">低</option>
+              </select>
+            </label>
+
+            <label class="full-width">
+              学习任务
+              <textarea id="planTask" name="task" rows="3" placeholder="例如：比较两种提示词的输出" required></textarea>
+            </label>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit">添加计划</button>
+            </div>
+          </form>
+          <form id="batchPlanForm" class="batch-plan-form hidden" aria-label="批量录入今日计划">
+            <p id="batchPlanDate" class="batch-plan-date"></p>
+            <div id="batchPlanGroups"></div>
+            <div class="form-actions">
+              <button id="addBatchPlanGroupButton" class="secondary-button" type="button">添加主题</button>
+              <button id="saveBatchPlansButton" class="primary-button" type="submit">统一保存今日计划</button>
+            </div>
+            <p id="batchPlanSaveMessage" class="form-message" aria-live="polite"></p>
+          </form>
+        </section></div>
+</section>
+
+<section id="records" class="workspace-section" aria-labelledby="recordsTitle">
+<header class="page-header progress-header">
+        <div>
+          <h2 id="recordsTitle">学习记录</h2>
+          <p class="intro">记录每次实际学习的时长、完成度和简短总结，留下可回看的学习轨迹。</p>
+        </div>
+      </header>
+
+<div class="record-entry-layout"><section id="aiProgressPanel" class="panel ai-progress-panel" aria-labelledby="aiProgressTitle">
+        <div class="panel-heading">
+          <h2 id="aiProgressTitle">描述生成草稿 <span class="simulation-badge">规则模拟</span></h2>
+          <p>描述学习的主题、时长和完成度，生成后逐条检查。只有点击保存，才会成为正式记录。</p>
+        </div>
+        <label for="aiProgressDescription">本次学习描述</label>
+        <textarea id="aiProgressDescription" rows="5" placeholder="今天学习 Prompt Engineering 45 分钟，完成 70%；雅思阅读练习 30 分钟，完成 60%。"></textarea>
+        <div class="form-actions">
+          <button id="generateProgressDraftButton" class="primary-button" type="button">生成记录草稿</button>
+          <button id="discardProgressDraftButton" class="secondary-button hidden" type="button">放弃草稿</button>
+        </div>
+        <p id="aiProgressStatus" class="form-message" role="status" aria-live="polite"></p>
+        <ul id="aiProgressWarnings" class="ai-progress-warnings hidden" aria-live="polite"></ul>
+        <section id="progressDraftQueuePanel" class="progress-draft-queue hidden" aria-labelledby="progressDraftQueueTitle">
+          <div class="progress-draft-queue-heading">
+            <h3 id="progressDraftQueueTitle">待确认草稿</h3>
+            <p id="progressDraftQueueSummary"></p>
+          </div>
+          <div id="progressDraftQueueList" class="progress-draft-queue-list"></div>
+        </section>
+      </section>
+<section id="progressFormPanel" class="panel" aria-label="新增学习记录">
+        <div class="panel-heading">
+          <h2 id="progressFormTitle">记录一次学习</h2>
+          <p id="progressFormDescription">可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。</p>
+        </div>
+        <form id="progressForm" class="topic-form">
+          <label>
+            记录日期
+            <input id="progressDate" name="date" type="date" required />
+          </label>
+
+          <label>
+            所属学习主题
+            <select id="progressTopic" name="topicId" required></select>
+          </label>
+
+          <label>
+            关联学习资料（可选）
+            <select id="progressResource" name="resourceId"></select>
+          </label>
+
+          <label>
+            关联学习计划（可选）
+            <select id="progressPlan" name="planId"></select>
+          </label>
+
+          <label>
+            实际学习时长（分钟）
+            <input id="progressDuration" name="durationMinutes" type="number" min="1" step="1" placeholder="例如：55" required />
+          </label>
+
+          <label>
+            本次学习完成度（%）
+            <input id="progressCompletion" aria-describedby="completionHelp" name="completionPercent" type="number" min="0" max="100" step="1" placeholder="例如：80" required />
+            <span id="completionHelp" class="field-help">表示本次学习内容的完成情况，不会自动改变任务或资料的状态。</span>
+          </label>
+
+          <label class="full-width">
+            简短总结（可选）
+            <textarea id="progressReflection" name="reflection" rows="4" maxlength="500" placeholder="例如：定位速度还不稳定，明天复盘错题。"></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button id="progressSubmitButton" class="primary-button" type="submit">保存学习记录</button>
+            <button id="cancelProgressEditButton" class="secondary-button hidden" type="button">取消编辑</button>
+          </div>
+          <p id="progressSaveMessage" class="form-message" aria-live="polite"></p>
+        </form>
+      </section></div>
+
+<section class="panel">
+          <div class="panel-heading">
+            <h2>学习记录列表</h2>
+            <p id="progressSummary"></p>
+          </div>
+          <div id="progressList" class="plan-list"></div>
+        </section>
+</section>
+
+<section id="topics" class="workspace-section" aria-labelledby="topicsTitle">
+<header class="page-header">
+        <div>
+          <h2 id="topicsTitle">学习主题</h2>
+          <p class="intro">整理正在学习的方向，让资料、计划和记录各有所属。</p>
         </div>
         <button id="showFormButton" class="primary-button" type="button">新建主题</button>
-      </section>
+      </header>
 
-      <section id="topicFormPanel" class="panel hidden" aria-label="新建学习主题">
+<section id="topicFormPanel" class="panel hidden" aria-label="新建学习主题">
         <div class="panel-heading">
           <h2 id="topicFormTitle">新建学习主题</h2>
-          <p id="topicFormDescription">只填写最必要的信息，先让系统能用起来。</p>
+          <p id="topicFormDescription">记录学习方向、主题和状态，建立自己的学习路线。</p>
         </div>
         <form id="topicForm" class="topic-form">
           <label>
@@ -75,7 +278,7 @@
         </form>
       </section>
 
-      <section class="layout">
+<section class="layout">
         <section class="panel topic-list-panel">
           <div class="panel-heading">
             <div class="section-title-row">
@@ -90,7 +293,7 @@
         <aside id="topicDetail" class="panel topic-detail" aria-label="学习主题详情"></aside>
       </section>
 
-      <section id="archivedTopicsPanel" class="panel archived-topics-panel hidden" aria-label="已归档学习主题">
+<section id="archivedTopicsPanel" class="panel archived-topics-panel hidden" aria-label="已归档学习主题">
         <div class="panel-heading">
           <div class="section-title-row">
             <h2>已归档主题</h2>
@@ -100,20 +303,21 @@
         </div>
         <div id="archivedTopicList" class="topic-list"></div>
       </section>
+</section>
 
-      <section class="page-header resource-header">
+<section id="resources" class="workspace-section" aria-labelledby="resourcesTitle">
+<header class="page-header resource-header">
         <div>
-          <p class="eyebrow">V1 第二个核心功能</p>
-          <h1>学习资料管理</h1>
+          <h2 id="resourcesTitle">学习资料</h2>
           <p class="intro">手动记录学习资料，并把每一份资料关联到对应学习主题。</p>
         </div>
         <button id="showResourceFormButton" class="primary-button" type="button">新增资料</button>
-      </section>
+      </header>
 
-      <section id="resourceFormPanel" class="panel hidden" aria-label="新增学习资料">
+<section id="resourceFormPanel" class="panel hidden" aria-label="新增学习资料">
         <div class="panel-heading">
           <h2 id="resourceFormTitle">新增学习资料</h2>
-          <p id="resourceFormDescription">V1 只记录资料的基础信息，不做上传、OCR 或 AI 自动整理。</p>
+          <p id="resourceFormDescription">记录资料标题、类型和学习状态，并关联到一个学习主题。</p>
         </div>
         <form id="resourceForm" class="topic-form">
           <label>
@@ -159,7 +363,7 @@
         </form>
       </section>
 
-      <section class="layout">
+<section class="layout">
         <section class="panel topic-list-panel">
           <div class="panel-heading">
             <h2>全部学习资料</h2>
@@ -170,205 +374,29 @@
 
         <aside id="resourceDetail" class="panel topic-detail" aria-label="学习资料详情"></aside>
       </section>
+</section>
 
-      <section class="page-header plan-header">
+<section id="notes" class="workspace-section" aria-labelledby="notesTitle">
+<header class="page-header note-header">
         <div>
-          <p class="eyebrow">V1 第三个核心功能</p>
-          <h1>学习计划</h1>
-          <p id="planDate" class="intro"></p>
-        </div>
-      </section>
-
-      <section class="layout">
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>新增学习计划</h2>
-            <p>普通计划用于今天或未来；如果忘记记录过去的安排，请主动选择“历史补录”。</p>
-          </div>
-          <div class="plan-entry-tabs" role="tablist" aria-label="计划录入方式">
-            <button class="small-button selected" type="button" role="tab" aria-selected="true" aria-controls="planForm" data-plan-entry-mode="single">单条录入</button>
-            <button class="small-button" type="button" role="tab" aria-selected="false" aria-controls="batchPlanForm" data-plan-entry-mode="batch">批量今日计划</button>
-          </div>
-          <form id="planForm" class="topic-form">
-            <label>
-              学习主题
-              <select id="planTopic" name="topicId" required></select>
-            </label>
-
-            <label>
-              学习资料（可选）
-              <select id="planResource" name="resourceId"></select>
-            </label>
-
-            <div class="plan-entry-mode-field">
-              <label for="planEntryMode">记录方式</label>
-              <select id="planEntryMode" name="entryMode" required>
-                <option value="scheduled">普通计划（今天或未来）</option>
-                <option value="backfill">历史补录（事后记录）</option>
-              </select>
-            </div>
-
-            <div class="plan-date-field">
-              <label for="planScheduleDate">计划日期</label>
-              <input id="planScheduleDate" name="date" type="date" aria-describedby="planDateError" required />
-              <p id="planDateError" class="form-message is-error" role="alert" aria-live="polite"></p>
-            </div>
-
-            <label>
-              预计时长（分钟，可选）
-              <input id="planEstimatedMinutes" name="estimatedMinutes" type="number" min="1" step="1" placeholder="例如：45" />
-            </label>
-
-            <label>
-              优先级
-              <select id="planPriority" name="priority" required>
-                <option value="高">高</option>
-                <option value="中" selected>中</option>
-                <option value="低">低</option>
-              </select>
-            </label>
-
-            <label class="full-width">
-              学习任务
-              <textarea id="planTask" name="task" rows="3" placeholder="例如：看完 Transformer 入门视频前 20 分钟" required></textarea>
-            </label>
-
-            <div class="form-actions">
-              <button class="primary-button" type="submit">添加计划</button>
-            </div>
-          </form>
-          <form id="batchPlanForm" class="batch-plan-form hidden" aria-label="批量录入今日计划">
-            <p id="batchPlanDate" class="batch-plan-date"></p>
-            <div id="batchPlanGroups"></div>
-            <div class="form-actions">
-              <button id="addBatchPlanGroupButton" class="secondary-button" type="button">添加主题</button>
-              <button id="saveBatchPlansButton" class="primary-button" type="submit">统一保存今日计划</button>
-            </div>
-            <p id="batchPlanSaveMessage" class="form-message" aria-live="polite"></p>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2 id="planListHeading">今天的任务</h2>
-            <div class="plan-view-tabs" role="tablist" aria-label="计划视图">
-              <button class="small-button" type="button" data-plan-view="today" role="tab">今天</button>
-              <button class="small-button" type="button" data-plan-view="future" role="tab">未来</button>
-              <button class="small-button" type="button" data-plan-view="history" role="tab">历史</button>
-            </div>
-            <p id="planSummary"></p>
-            <p id="planSaveMessage" class="form-message" role="status" aria-live="polite"></p>
-          </div>
-          <div id="planList" class="plan-list"></div>
-        </section>
-      </section>
-
-      <section class="page-header progress-header">
-        <div>
-          <p class="eyebrow">V1 第五个核心功能</p>
-          <h1>学习进度</h1>
-          <p class="intro">记录每次实际学习的时长、完成度和简短总结，留下可回看的学习轨迹。</p>
-        </div>
-      </section>
-
-      <section id="aiProgressPanel" class="panel ai-progress-panel" aria-labelledby="aiProgressTitle">
-        <div class="panel-heading">
-          <h2 id="aiProgressTitle">AI 辅助记录</h2>
-          <p>用一段话描述本次学习，系统会生成可修改的进度草稿；确认前不会保存。</p>
-        </div>
-        <label for="aiProgressDescription">本次学习描述</label>
-        <textarea id="aiProgressDescription" rows="5" placeholder="例如：今天学习 Transformer 入门 45 分钟，完成 70%……"></textarea>
-        <div class="form-actions">
-          <button id="generateProgressDraftButton" class="primary-button" type="button">生成进度草稿</button>
-          <button id="discardProgressDraftButton" class="secondary-button hidden" type="button">放弃草稿</button>
-        </div>
-        <p id="aiProgressStatus" class="form-message" role="status" aria-live="polite"></p>
-        <ul id="aiProgressWarnings" class="ai-progress-warnings hidden" aria-live="polite"></ul>
-        <section id="progressDraftQueuePanel" class="progress-draft-queue hidden" aria-labelledby="progressDraftQueueTitle">
-          <div class="progress-draft-queue-heading">
-            <h3 id="progressDraftQueueTitle">待确认草稿</h3>
-            <p id="progressDraftQueueSummary"></p>
-          </div>
-          <div id="progressDraftQueueList" class="progress-draft-queue-list"></div>
-        </section>
-      </section>
-
-      <section id="progressFormPanel" class="panel" aria-label="新增学习进度记录">
-        <div class="panel-heading">
-          <h2 id="progressFormTitle">新增进度记录</h2>
-          <p id="progressFormDescription">可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。</p>
-        </div>
-        <form id="progressForm" class="topic-form">
-          <label>
-            记录日期
-            <input id="progressDate" name="date" type="date" required />
-          </label>
-
-          <label>
-            所属学习主题
-            <select id="progressTopic" name="topicId" required></select>
-          </label>
-
-          <label>
-            关联学习资料（可选）
-            <select id="progressResource" name="resourceId"></select>
-          </label>
-
-          <label>
-            关联学习计划（可选）
-            <select id="progressPlan" name="planId"></select>
-          </label>
-
-          <label>
-            实际学习时长（分钟）
-            <input id="progressDuration" name="durationMinutes" type="number" min="1" step="1" placeholder="例如：55" required />
-          </label>
-
-          <label>
-            本次完成度（0-100）
-            <input id="progressCompletion" name="completionPercent" type="number" min="0" max="100" step="1" placeholder="例如：80" required />
-          </label>
-
-          <label class="full-width">
-            简短总结（可选）
-            <textarea id="progressReflection" name="reflection" rows="4" maxlength="500" placeholder="例如：定位速度还不稳定，明天复盘错题。"></textarea>
-          </label>
-
-          <div class="form-actions">
-            <button id="progressSubmitButton" class="primary-button" type="submit">保存进度</button>
-            <button id="cancelProgressEditButton" class="secondary-button hidden" type="button">取消编辑</button>
-          </div>
-          <p id="progressSaveMessage" class="form-message" aria-live="polite"></p>
-        </form>
-      </section>
-
-      <section class="layout progress-layout">
-        <section class="panel progress-overview-panel">
-          <div class="panel-heading">
-            <h2>学习概览</h2>
-            <p>基于已保存的学习进度记录统计。</p>
-          </div>
-          <div id="progressOverview" class="detail-grid compact-grid"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>全部进度记录</h2>
-            <p id="progressSummary"></p>
-          </div>
-          <div id="progressList" class="plan-list"></div>
-        </section>
-      </section>
-
-      <section class="page-header note-header">
-        <div>
-          <p class="eyebrow">V1 第四个核心功能</p>
-          <h1>学习笔记</h1>
+          <h2 id="notesTitle">学习笔记</h2>
           <p class="intro">记录学习过程中的思考、总结和收获，并关联到对应的主题、资料或学习计划。</p>
         </div>
+      </header>
+
+<section class="layout">
+        <section class="panel topic-list-panel">
+          <div class="panel-heading">
+            <h2>全部笔记</h2>
+            <p id="noteSummary"></p>
+          </div>
+          <div id="noteList" class="topic-list"></div>
+        </section>
+
+        <aside id="noteDetail" class="panel topic-detail" aria-label="学习笔记详情"></aside>
       </section>
 
-      <section id="noteFormPanel" class="panel" aria-label="新增学习笔记">
+<section id="noteFormPanel" class="panel" aria-label="新增学习笔记">
         <div class="panel-heading">
           <h2 id="noteFormTitle">新增笔记</h2>
           <p id="noteFormDescription">先选择所属学习主题；资料和学习计划可以不选。</p>
@@ -376,7 +404,7 @@
         <form id="noteForm" class="topic-form">
           <label>
             笔记标题
-            <input id="noteTitle" name="title" type="text" placeholder="例如：Transformer 注意力机制的理解" required />
+            <input id="noteTitle" name="title" type="text" placeholder="例如：提示词结构复盘" required />
           </label>
 
           <label>
@@ -406,21 +434,13 @@
           <p id="noteSaveMessage" class="form-message" aria-live="polite"></p>
         </form>
       </section>
+</section>
 
-      <section class="layout">
-        <section class="panel topic-list-panel">
-          <div class="panel-heading">
-            <h2>全部笔记</h2>
-            <p id="noteSummary"></p>
-          </div>
-          <div id="noteList" class="topic-list"></div>
-        </section>
-
-        <aside id="noteDetail" class="panel topic-detail" aria-label="学习笔记详情"></aside>
-      </section>
-    </main>
+<footer class="site-footer"><span>AI Learning System · 个人学习工作台</span><p>数据保存在当前浏览器，清理浏览器数据可能丢失记录。描述生成草稿采用本地规则模拟，未接入真实大模型。</p></footer>
+</main>
 
     <script src="src/data-model.js"></script>
+    <script src="src/demo-data.js"></script>
     <script src="src/mock-ai-provider.js"></script>
     <script src="src/ai-service.js"></script>
     <script src="src/progress-draft-queue.js"></script>

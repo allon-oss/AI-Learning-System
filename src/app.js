@@ -31,109 +31,6 @@ const LEARNING_DIRECTION_STORAGE_KEY = "personal-learning-system-directions";
  * @property {string} updatedAt
  */
 
-const defaultTopics = [
-  {
-    id: "topic-ai-foundation",
-    name: "AI 基础",
-    direction: "AI 学习",
-    parentId: "",
-    description: "理解 AI 的基本概念、常见能力和使用边界。",
-    status: "学习中",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "topic-ai-prompt",
-    name: "Prompt Engineering",
-    direction: "AI 学习",
-    parentId: "",
-    description: "学习如何设计提示词，让 AI 更好地完成任务。",
-    status: "学习中",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "topic-ielts-reading",
-    name: "阅读",
-    direction: "雅思英语学习",
-    parentId: "",
-    description: "练习雅思阅读文章、关键词定位和错题分析。",
-    status: "学习中",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "topic-ielts-vocabulary",
-    name: "词汇",
-    direction: "雅思英语学习",
-    parentId: "",
-    description: "积累雅思高频词、同义替换和写作表达。",
-    status: "未开始",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "topic-ielts-listening",
-    name: "听力",
-    direction: "雅思英语学习",
-    parentId: "",
-    description: "练习雅思听力题型、关键词捕捉和错题复盘。",
-    status: "未开始",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "topic-ielts-writing",
-    name: "写作",
-    direction: "雅思英语学习",
-    parentId: "",
-    description: "练习雅思小作文、大作文结构和表达积累。",
-    status: "未开始",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "topic-ielts-speaking",
-    name: "口语",
-    direction: "雅思英语学习",
-    parentId: "",
-    description: "练习雅思口语话题、回答结构和表达流利度。",
-    status: "未开始",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-];
-
-const defaultResources = [
-  {
-    id: "resource-ai-prompt-guide",
-    title: "Prompt Engineering 入门文章",
-    topicId: "topic-ai-prompt",
-    type: "文章",
-    status: "未开始",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "resource-ielts-reading-test",
-    title: "剑桥雅思 18 Test 1 Reading",
-    topicId: "topic-ielts-reading",
-    type: "真题",
-    status: "学习中",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "resource-ielts-paper",
-    title: "雅思阅读同义替换打印资料",
-    topicId: "topic-ielts-reading",
-    type: "纸质资料",
-    status: "学习中",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-];
-
 if (!window.LearningDataModel) {
   throw new Error("学习数据模块加载失败，请刷新页面后重试。");
 }
@@ -146,9 +43,19 @@ if (!window.ProgressDraftQueue) {
   throw new Error("草稿队列模块加载失败，请刷新页面后重试。");
 }
 
-let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, defaultTopics));
+const demoStorageKeys = {
+  topics: TOPIC_STORAGE_KEY, resources: RESOURCE_STORAGE_KEY, plans: PLAN_STORAGE_KEY,
+  notes: NOTE_STORAGE_KEY, progressRecords: PROGRESS_STORAGE_KEY, directions: LEARNING_DIRECTION_STORAGE_KEY,
+};
+let demoInitialization = "unavailable";
+try {
+  demoInitialization = window.LearningDemoData.initializeDemoData(window.localStorage, demoStorageKeys);
+} catch { /* Accessing localStorage itself can be denied by browser settings. */ }
+document.querySelector("#demoStorageNotice").classList.toggle("hidden", demoInitialization !== "unavailable");
+
+let topics = window.LearningDataModel.normalizeTopics(loadItems(TOPIC_STORAGE_KEY, []));
 let learningDirections = window.LearningDataModel.normalizeLearningDirections(loadItems(LEARNING_DIRECTION_STORAGE_KEY, []));
-let resources = loadItems(RESOURCE_STORAGE_KEY, defaultResources);
+let resources = loadItems(RESOURCE_STORAGE_KEY, []);
 let plans = window.LearningDataModel.normalizePlans(loadItems(PLAN_STORAGE_KEY, []));
 /** @type {Note[]} */
 let notes = loadItems(NOTE_STORAGE_KEY, []);
@@ -725,10 +632,10 @@ progressForm.addEventListener("submit", (event) => {
     resetProgressForm();
   }
   progressSaveMessage.textContent = isEditing
-    ? "进度记录已更新。"
+    ? "学习记录已更新。"
     : wasDraftConfirmation
-      ? activeProgressDraftId ? "当前草稿已保存，请继续确认下一条。" : "AI 进度草稿队列已全部确认并保存。"
-      : "进度记录已保存。";
+      ? activeProgressDraftId ? "当前草稿已保存，请继续确认下一条。" : "记录草稿已全部确认并保存。"
+      : "学习记录已保存。";
   render();
   progressSubmitButton.disabled = true;
   window.setTimeout(() => {
@@ -850,13 +757,11 @@ progressList.addEventListener("click", (event) => {
 });
 
 function loadItems(storageKey, fallbackItems) {
-  const storedItems = localStorage.getItem(storageKey);
-  if (!storedItems) {
-    return fallbackItems;
-  }
-
   try {
-    return JSON.parse(storedItems);
+    const storedItems = localStorage.getItem(storageKey);
+    if (storedItems === null) return fallbackItems;
+    const parsed = JSON.parse(storedItems);
+    return Array.isArray(parsed) ? parsed : fallbackItems;
   } catch {
     return fallbackItems;
   }
@@ -1374,13 +1279,13 @@ function renderTopicDetail() {
         <p>${notes.filter((note) => note.topicId === topic.id).length ? `已有 ${notes.filter((note) => note.topicId === topic.id).length} 条笔记。` : "还没有这个主题的笔记。"}</p>
       </div>
       <div>
-        <h3>学习进度</h3>
-        <p>${relatedProgressRecords.length ? `累计 ${relatedDuration} 分钟，记录 ${relatedProgressRecords.length} 次。` : "还没有学习进度记录。"}</p>
+        <h3>学习记录</h3>
+        <p>${relatedProgressRecords.length ? `累计 ${relatedDuration} 分钟，记录 ${relatedProgressRecords.length} 次。` : "还没有学习记录。"}</p>
       </div>
     </div>
     <div class="detail-section">
-      <h3>最近学习进度</h3>
-      ${renderRecentProgressRecords(relatedProgressRecords, "这个主题还没有学习进度记录。")}
+      <h3>最近学习记录</h3>
+      ${renderRecentProgressRecords(relatedProgressRecords, "这个主题还没有学习记录。")}
     </div>
   `;
 }
@@ -1469,8 +1374,8 @@ function renderResourceDetail() {
       <p>${todayPlanSummary.total ? `已完成 ${todayPlanSummary.completed}/${todayPlanSummary.total}` : "今天没有关联这份资料的任务。"}</p>
     </div>
     <div class="detail-section">
-      <h3>学习进度</h3>
-      <p>${relatedProgressRecords.length ? `已有 ${relatedProgressRecords.length} 条关联记录，累计 ${getTotalDuration(relatedProgressRecords)} 分钟。` : "还没有关联的学习进度记录。"}</p>
+      <h3>学习记录</h3>
+      <p>${relatedProgressRecords.length ? `已有 ${relatedProgressRecords.length} 条关联记录，累计 ${getTotalDuration(relatedProgressRecords)} 分钟。` : "还没有关联的学习记录。"}</p>
       ${renderRecentProgressRecords(relatedProgressRecords, "")}
     </div>
   `;
@@ -1478,14 +1383,14 @@ function renderResourceDetail() {
 
 function renderPlanHeader() {
   setPlanDateDefaults();
-  planDate.textContent = `今天是 ${getToday()}。普通计划用于今天或未来，过去遗漏的安排可选择“历史补录”。`;
+  planDate.textContent = `今天是 ${getToday()}，从一个具体的小任务开始。`;
 }
 
 function renderPlanList() {
   const visiblePlans = getPlansForSelectedView();
   const completedCount = visiblePlans.filter(({ plan }) => plan.isCompleted).length;
   const viewDetails = {
-    today: { heading: "今天的任务", empty: "今天还没有学习计划，可以先添加一个小任务。" },
+    today: { heading: "今天的任务", empty: "今天还没有学习任务，可以在新增学习计划中添加一条。" },
     future: { heading: "未来计划", empty: "还没有未来的学习计划。" },
     history: { heading: "历史计划", empty: "还没有可回看的历史计划。" },
   };
@@ -1526,7 +1431,7 @@ function renderPlanList() {
           <p>优先级：${escapeHtml(plan.priority)}${plan.estimatedMinutes ? ` · 预计时长：${plan.estimatedMinutes} 分钟` : ""}</p>
           <p>主题：${escapeHtml(getTopicAssociationLabel(plan.topicId, "未找到主题"))}</p>
           <p>资料：${escapeHtml(getPlanResourceLabel(plan, resource))}</p>
-          <p>学习进度：${relatedProgressRecords.length ? `${relatedProgressRecords.length} 条，累计 ${getTotalDuration(relatedProgressRecords)} 分钟` : "暂无记录"}</p>
+          <p>学习记录：${relatedProgressRecords.length ? `${relatedProgressRecords.length} 条，累计 ${getTotalDuration(relatedProgressRecords)} 分钟` : "暂无记录"}</p>
         </div>
       </div>
       <div class="detail-actions">
@@ -1548,7 +1453,7 @@ function renderNoteList() {
   noteList.innerHTML = "";
 
   if (!sortedNotes.length) {
-    noteList.innerHTML = '<p class="empty-state">还没有学习笔记，先记录一次学习收获吧。</p>';
+    noteList.innerHTML = '<p class="empty-state">把理解、疑问或错题思路记在这里。</p>';
     return;
   }
 
@@ -1687,7 +1592,7 @@ function renderProgressOverview() {
       <p>${totalDuration} 分钟</p>
     </div>
     <div>
-      <h3>进度记录次数</h3>
+      <h3>学习记录次数</h3>
       <p>${progressRecords.length} 次</p>
     </div>
     <div>
@@ -1699,11 +1604,11 @@ function renderProgressOverview() {
 
 function renderProgressList() {
   const sortedProgressRecords = getSortedProgressRecords();
-  progressSummary.textContent = `当前共有 ${sortedProgressRecords.length} 条进度记录。`;
+  progressSummary.textContent = `当前共有 ${sortedProgressRecords.length} 条学习记录。`;
   progressList.innerHTML = "";
 
   if (!sortedProgressRecords.length) {
-    progressList.innerHTML = '<p class="empty-state">还没有学习进度记录，完成一次学习后就来记一笔吧。</p>';
+    progressList.innerHTML = '<p class="empty-state">完成一次学习后，记录时长和收获。</p>';
     return;
   }
 
@@ -1772,7 +1677,7 @@ async function generateProgressDraftFromDescription() {
   isProgressDraftGenerating = true;
   generateProgressDraftButton.disabled = true;
   aiProgressStatus.classList.remove("is-error");
-  aiProgressStatus.textContent = "正在生成进度草稿……";
+  aiProgressStatus.textContent = "正在生成记录草稿……";
   const requestToken = ++progressDraftRequestToken;
 
   try {
@@ -1836,8 +1741,8 @@ function loadActiveProgressDraftIntoForm() {
   const draft = item.draft;
   editingProgressId = "";
   progressForm.reset();
-  progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
-  progressFormTitle.textContent = "新增进度记录";
+  progressFormPanel.setAttribute("aria-label", "新增学习记录");
+  progressFormTitle.textContent = "记录一次学习";
   progressFormDescription.textContent = "可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。";
   cancelProgressEditButton.classList.add("hidden");
   progressSaveMessage.textContent = "";
@@ -2036,8 +1941,8 @@ function startProgressEditing(progressId) {
 
   suspendProgressDraftQueue();
   editingProgressId = progress.id;
-  progressFormPanel.setAttribute("aria-label", "编辑学习进度记录");
-  progressFormTitle.textContent = "编辑进度记录";
+  progressFormPanel.setAttribute("aria-label", "编辑学习记录");
+  progressFormTitle.textContent = "编辑学习记录";
   progressFormDescription.textContent = "可修改今天或过去的记录日期、时长、完成度、总结或关联信息。";
   progressSubmitButton.textContent = "保存修改";
   cancelProgressEditButton.classList.remove("hidden");
@@ -2061,10 +1966,10 @@ function startProgressEditing(progressId) {
 function resetProgressForm() {
   editingProgressId = "";
   progressForm.reset();
-  progressFormPanel.setAttribute("aria-label", "新增学习进度记录");
-  progressFormTitle.textContent = "新增进度记录";
+  progressFormPanel.setAttribute("aria-label", "新增学习记录");
+  progressFormTitle.textContent = "记录一次学习";
   progressFormDescription.textContent = "可补录今天或过去的学习日期；先选择学习主题，资料和学习计划可以不选。";
-  progressSubmitButton.textContent = "保存进度";
+  progressSubmitButton.textContent = "保存学习记录";
   cancelProgressEditButton.classList.add("hidden");
   setProgressDateDefaults();
   updateProgressTopicOptions();
@@ -2082,7 +1987,7 @@ function deleteProgress(progressId) {
     return;
   }
 
-  const confirmed = window.confirm(`确定要删除 ${progress.date} 的这条学习进度记录吗？删除后无法恢复。`);
+  const confirmed = window.confirm(`确定要删除 ${progress.date} 的这条学习记录吗？删除后无法恢复。`);
   if (!confirmed) {
     return;
   }
@@ -2094,7 +1999,7 @@ function deleteProgress(progressId) {
     resetProgressForm();
   }
 
-  progressSaveMessage.textContent = "进度记录已删除。";
+  progressSaveMessage.textContent = "学习记录已删除。";
   render();
 }
 
@@ -2120,7 +2025,7 @@ function openResourceForm(topicId = "", resourceId = "") {
     editingResourceId = "";
     resourceForm.reset();
     resourceFormTitle.textContent = "新增学习资料";
-    resourceFormDescription.textContent = "V1 只记录资料的基础信息，不做上传、OCR 或 AI 自动整理。";
+    resourceFormDescription.textContent = "记录资料标题、类型和学习状态，并关联到一个学习主题。";
     resourceSubmitButton.textContent = "保存资料";
     if (topicId) {
       resourceTopicSelect.value = topicId;
@@ -2135,7 +2040,7 @@ function closeResourceForm() {
   resourceForm.reset();
   resourceFormPanel.classList.add("hidden");
   resourceFormTitle.textContent = "新增学习资料";
-  resourceFormDescription.textContent = "V1 只记录资料的基础信息，不做上传、OCR 或 AI 自动整理。";
+  resourceFormDescription.textContent = "记录资料标题、类型和学习状态，并关联到一个学习主题。";
   resourceSubmitButton.textContent = "保存资料";
   updateResourceTopicOptions();
 }
@@ -2213,7 +2118,7 @@ function openTopicForm(topicId = "") {
     editingTopicId = "";
     topicFormPanel.setAttribute("aria-label", "新建学习主题");
     topicFormTitle.textContent = "新建学习主题";
-    topicFormDescription.textContent = "只填写最必要的信息，先让系统能用起来。";
+    topicFormDescription.textContent = "记录学习方向、主题和状态，建立自己的学习路线。";
     topicSubmitButton.textContent = "保存主题";
     renderTopicDirectionOptions();
     directionSelect.disabled = false;
@@ -2234,7 +2139,7 @@ function closeTopicForm() {
   document.querySelector("#topicDescription").disabled = false;
   topicFormPanel.setAttribute("aria-label", "新建学习主题");
   topicFormTitle.textContent = "新建学习主题";
-  topicFormDescription.textContent = "只填写最必要的信息，先让系统能用起来。";
+  topicFormDescription.textContent = "记录学习方向、主题和状态，建立自己的学习路线。";
   topicSubmitButton.textContent = "保存主题";
   topicFormPanel.classList.add("hidden");
   updateParentOptions();

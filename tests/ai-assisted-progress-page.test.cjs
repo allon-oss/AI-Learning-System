@@ -455,7 +455,7 @@ test("放弃草稿会清空草稿界面和表单，但不产生进度记录", as
   assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
   assert.equal(await page.locator("#aiProgressStatus").textContent(), "");
   assert.equal(await page.locator("#progressDuration").inputValue(), "");
-  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存进度");
+  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存学习记录");
   assert.deepEqual(await getStoredProgress(page), []);
   assert.deepEqual(pageErrors, []);
 });
@@ -529,7 +529,7 @@ test("放弃草稿会使尚未完成的重新生成请求失效", async (t) => {
 
   assert.equal(await page.locator("#aiProgressDescription").inputValue(), "");
   assert.equal(await page.locator("#discardProgressDraftButton").isVisible(), false);
-  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存进度");
+  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存学习记录");
   assert.equal(await page.locator("#progressDuration").inputValue(), "");
   assert.deepEqual(await getStoredProgress(page), []);
   assert.deepEqual(pageErrors, []);
@@ -561,7 +561,7 @@ test("放弃草稿后旧请求拒绝不会显示错误或重新激活草稿", as
   assert.equal(await page.locator("#aiProgressStatus").textContent(), "");
   assert.equal(await page.locator("#aiProgressStatus").evaluate((status) => status.classList.contains("is-error")), false);
   assert.equal(await page.locator("#discardProgressDraftButton").isVisible(), false);
-  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存进度");
+  assert.equal(await page.locator("#progressSubmitButton").textContent(), "保存学习记录");
   assert.equal(await page.locator("#progressDuration").inputValue(), "");
   assert.deepEqual(await getStoredProgress(page), []);
   assert.deepEqual(pageErrors, []);
